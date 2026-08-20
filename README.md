@@ -27,7 +27,11 @@ Google は YouTube の許可（youtube.upload）と ドライブ の許可（dri
 さらに、上げ先のチャンネルがブランドアカウントの場合、そのアカウントは
 YouTube 以外の Google のサービスを使えません。`openid` や `email` を混ぜると
 「サービスをご利用いただけません」で止まります（2026-08-20 に実物で確認）。
-そのため YouTube の側は `youtube.upload` だけを求めます。
+そのため YouTube の側は YouTube の許可だけを求めます。
+
+`youtube.upload` は「上げる」だけの許可で、どのチャンネルかを聞く channels.list には
+足りません（403 insufficientPermissions。2026-08-20 に実物で確認）。上げ先を取り違えない
+ための確認に使うため `youtube.readonly` も一緒に求めます。
 
 - `auth/youtube.json` … YouTube の控え（ブランドアカウント。チャンネル名と ID で本人確認）
 - `auth/workspace.json` … ドライブとシートの控え（ふだんの Google アカウント。ALLOWED_EMAIL で本人確認）

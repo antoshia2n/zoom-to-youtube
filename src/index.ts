@@ -37,9 +37,16 @@ const PERMITS = {
     /**
      * ブランドアカウントは YouTube 以外の Google のサービスを使えません。
      * openid / email を混ぜると「サービスをご利用いただけません」で止まります
-     * （2026-08-20 に実物で確認）。ここは youtube.upload だけにします。
+     * （2026-08-20 に実物で確認）。ここは YouTube の許可だけにします。
+     *
+     * youtube.upload は「上げる」だけの許可で、channels.list（どのチャンネルかを聞く）
+     * には足りず 403 insufficientPermissions が返ります（2026-08-20 に実物で確認）。
+     * 上げ先を取り違えないための確認に使うので youtube.readonly も足します。
      */
-    scopes: "https://www.googleapis.com/auth/youtube.upload",
+    scopes: [
+      "https://www.googleapis.com/auth/youtube.upload",
+      "https://www.googleapis.com/auth/youtube.readonly",
+    ].join(" "),
   },
   workspace: {
     label: "ドライブへ保存し、シートに書き戻す許可（ふだんの Google アカウントで通す）",
@@ -294,9 +301,13 @@ async function oauthCallback(request: Request, env: Env): Promise<Response> {
       "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true",
       { headers: { authorization: `Bearer ${body.access_token}` } },
     );
-    const chJson = (await chRes.json()) as {
-      items?: { id?: string; snippet?: { title?: string } }[];
-    };
+    const raw = await chRes.text();
+    let chJson: { items?: { id?: string; snippet?: { title?: string } }[] } = {};
+    try {
+      chJson = JSON.parse(raw);
+    } catch {
+      /* そのまま下で raw を出す */
+    }
     const ch = chJson.items?.[0];
     if (!chRes.ok || !ch?.id) {
       return text(
@@ -304,7 +315,12 @@ async function oauthCallback(request: Request, env: Env): Promise<Response> {
           "許可は出ましたが、どのチャンネルかを確かめられませんでした。控えは保存していません。",
           "",
           `YouTube からの返事：${chRes.status}`,
-          "上げ先のチャンネルを持っているブランドアカウントを選んでやり直してください。",
+          "",
+          "--- YouTube が返した中身（そのまま貼ってください）---",
+          raw.slice(0, 2000),
+          "",
+          "取れた許可：",
+          ...(body.scope ? body.scope.split(" ").map((x) => "  ・" + x) : ["  （表示なし）"]),
         ].join("\n"),
         400,
       );
