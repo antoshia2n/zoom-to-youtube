@@ -532,7 +532,7 @@ async function processRow(
     await set("Drive保存済み");
 
     // 動画を YouTube へ
-    out("  動画を YouTube へ（非公開）");
+    out("  動画を YouTube へ（限定公開で依頼）");
     await set("YouTube投稿中");
     const yt = await accessToken(env, "youtube");
     if (!yt.ok) throw new Error(yt.why);
@@ -542,16 +542,30 @@ async function processRow(
       "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
       {
         snippet: { title: (row[COL.title] || z.topic || "無題").slice(0, 100), description: "" },
-        status: { privacyStatus: "private", selfDeclaredMadeForKids: false },
+        /**
+         * 2026-08-20：この チャンネル では、上げたあと手で 限定公開 に変えても
+         * 非公開に戻されないことを実物で確認した（固定は掛かっていない）。
+         * そこで最初から 限定公開 で頼む。もし YouTube 側が非公開に戻した場合でも、
+         * これまでと同じ状態になるだけで、悪くはならない。
+         */
+        status: { privacyStatus: "unlisted", selfDeclaredMadeForKids: false },
       },
       size,
       "video/mp4",
     );
-    const video = (await relay(z, size, ytSession, yt.token, out)) as { id?: string };
+    const video = (await relay(z, size, ytSession, yt.token, out)) as {
+      id?: string;
+      status?: { privacyStatus?: string };
+    };
     if (!video.id) throw new Error("YouTube が動画の番号を返しません");
     row[COL.youtube] = `https://www.youtube.com/watch?v=${video.id}`;
 
-    await set("完了");
+    const privacy = video.status?.privacyStatus ?? "不明";
+    const jp = privacy === "unlisted" ? "限定公開" : privacy === "private" ? "非公開" : privacy;
+    out(`  YouTube 側の公開設定：${jp}`);
+
+    // 限定公開で頼んだのに非公開になった場合は、Naoki が手で直せるように印を残す
+    await set("完了", jp === "限定公開" ? "" : `YouTube 側で ${jp} になりました。手で 限定公開 に変えてください`);
     out(`  完了：${row[COL.youtube]}`);
   } catch (e) {
     const why = e instanceof Error ? e.message : String(e);
