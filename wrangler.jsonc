@@ -10,6 +10,9 @@
       "bucket_name": "zoom-to-youtube"
     }
   ],
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
   "observability": {
     "enabled": true
   }
