@@ -1,0 +1,17 @@
+{
+  "name": "zoom-to-youtube",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Zoom の録画を Google ドライブと YouTube へ運ぶ処理（第1版は測るだけ）",
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260401.0",
+    "typescript": "^5.9.3",
+    "wrangler": "^3.90.0"
+  }
+}
