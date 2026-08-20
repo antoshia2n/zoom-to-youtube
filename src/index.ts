@@ -25,21 +25,49 @@ const UA =
   "(KHTML, like Gecko) Chrome/126.0 Safari/537.36";
 const ZOOM_BASE = "https://us02web.zoom.us";
 
-const GOOGLE_SCOPES = [
-  "https://www.googleapis.com/auth/youtube.upload",
-  "https://www.googleapis.com/auth/drive.file",
-  "https://www.googleapis.com/auth/spreadsheets",
-  "openid",
-  "email",
-].join(" ");
+/**
+ * Google は YouTube の許可と ドライブ の許可を同じ1回でまとめて出せません
+ * （2026-08-20 に実物で確認：This request contains scopes that cannot be
+ *  requested together と返る）。そのため許可を2回に分け、控えも別々に置きます。
+ */
+const PERMITS = {
+  youtube: {
+    label: "YouTube へ動画を上げる許可（ブランドアカウントで通す）",
+    key: "auth/youtube.json",
+    /**
+     * ブランドアカウントは YouTube 以外の Google のサービスを使えません。
+     * openid / email を混ぜると「サービスをご利用いただけません」で止まります
+     * （2026-08-20 に実物で確認）。ここは youtube.upload だけにします。
+     */
+    scopes: "https://www.googleapis.com/auth/youtube.upload",
+  },
+  workspace: {
+    label: "ドライブへ保存し、シートに書き戻す許可（ふだんの Google アカウントで通す）",
+    key: "auth/workspace.json",
+    scopes: [
+      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/spreadsheets",
+      "openid",
+      "email",
+    ].join(" "),
+  },
+} as const;
 
-const AUTH_KEY = "auth/google.json";
+type PermitName = keyof typeof PERMITS;
+
+function isPermitName(v: string | null): v is PermitName {
+  return v === "youtube" || v === "workspace";
+}
 
 interface StoredAuth {
   refresh_token: string;
   scope: string;
-  email: string;
   obtained_at: string;
+  /** ふだんの Google アカウントで通したとき */
+  email?: string;
+  /** ブランドアカウントで通したとき */
+  channel_id?: string;
+  channel_title?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -98,18 +126,41 @@ async function oauthStart(request: Request, env: Env): Promise<Response> {
     );
   }
 
+  const which = new URL(request.url).searchParams.get("for");
+  if (!isPermitName(which)) {
+    return text(
+      [
+        "許可は2回に分けて出します。理由は2つ。",
+        "  ・Google は YouTube の許可とドライブの許可を1回にまとめられない",
+        "  ・ブランドアカウントは YouTube 以外の Google のサービスを使えない",
+        "",
+        "下の2本を、上から順に開いてください。**選ぶアカウントが違います。**",
+        "",
+        "  1本目：ドライブへ保存し、シートに書き戻す許可",
+        "      ふだんの Google アカウントを選ぶ（ブランドアカウントではない方）",
+        `      ${new URL("/oauth/start?for=workspace", request.url).toString()}`,
+        "",
+        "  2本目：YouTube へ動画を上げる許可",
+        "      上げ先のチャンネルのブランドアカウントを選ぶ",
+        `      ${new URL("/oauth/start?for=youtube", request.url).toString()}`,
+        "",
+        "2本とも終わったら /oauth/status で状態を見られます。",
+      ].join("\n"),
+    );
+  }
+
+  const permit = PERMITS[which];
   const redirectUri = new URL("/oauth/callback", request.url).toString();
   const state = crypto.randomUUID();
-  await env.STORE.put(`auth/state/${state}`, new Date().toISOString());
+  await env.STORE.put(`auth/state/${state}`, which);
 
   const auth = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   auth.searchParams.set("client_id", env.GOOGLE_CLIENT_ID as string);
   auth.searchParams.set("redirect_uri", redirectUri);
   auth.searchParams.set("response_type", "code");
-  auth.searchParams.set("scope", GOOGLE_SCOPES);
+  auth.searchParams.set("scope", permit.scopes);
   auth.searchParams.set("access_type", "offline");
   auth.searchParams.set("prompt", "consent");
-  auth.searchParams.set("include_granted_scopes", "true");
   auth.searchParams.set("state", state);
 
   return Response.redirect(auth.toString(), 302);
@@ -137,8 +188,9 @@ async function oauthCallback(request: Request, env: Env): Promise<Response> {
   const state = url.searchParams.get("state");
   if (!code || !state) return text("許可の受け取りに必要な値がありません。", 400);
 
-  const held = await env.STORE.get(`auth/state/${state}`);
-  if (!held) {
+  const heldObj = await env.STORE.get(`auth/state/${state}`);
+  const held = heldObj ? await heldObj.text() : null;
+  if (!held || !isPermitName(held)) {
     return text(
       [
         "合言葉が合いませんでした。",
@@ -150,6 +202,7 @@ async function oauthCallback(request: Request, env: Env): Promise<Response> {
     );
   }
   await env.STORE.delete(`auth/state/${state}`);
+  const permit = PERMITS[held];
 
   const redirectUri = new URL("/oauth/callback", request.url).toString();
   const res = await fetch("https://oauth2.googleapis.com/token", {
@@ -166,6 +219,7 @@ async function oauthCallback(request: Request, env: Env): Promise<Response> {
 
   const body = (await res.json()) as {
     refresh_token?: string;
+    access_token?: string;
     id_token?: string;
     scope?: string;
     error?: string;
@@ -201,51 +255,114 @@ async function oauthCallback(request: Request, env: Env): Promise<Response> {
     );
   }
 
-  const claims = body.id_token ? readIdToken(body.id_token) : {};
-  const email = (claims.email ?? "").toLowerCase();
-  const allowed = (env.ALLOWED_EMAIL as string).trim().toLowerCase();
-
-  if (!email || email !== allowed) {
-    return text(
-      [
-        "このアカウントの許可は受け付けません。控えは保存していません。",
-        "",
-        `許可を出したアカウント：${email || "（取れませんでした）"}`,
-        "受け付ける設定になっているアカウントとは別です。",
-        "",
-        "上げ先の YouTube チャンネルを持っているアカウントでやり直してください。",
-      ].join("\n"),
-      403,
-    );
-  }
-
   const stored: StoredAuth = {
     refresh_token: body.refresh_token,
     scope: body.scope ?? "",
-    email,
     obtained_at: new Date().toISOString(),
   };
-  await env.STORE.put(AUTH_KEY, JSON.stringify(stored));
+  let who: string;
+
+  if (held === "workspace") {
+    // ふだんの Google アカウント。メールアドレスで受け付けるかを判定する。
+    const claims = body.id_token ? readIdToken(body.id_token) : {};
+    const email = (claims.email ?? "").toLowerCase();
+    const allowed = (env.ALLOWED_EMAIL as string).trim().toLowerCase();
+    if (!email || email !== allowed) {
+      return text(
+        [
+          "このアカウントの許可は受け付けません。控えは保存していません。",
+          "",
+          `許可を出したアカウント：${email || "（取れませんでした）"}`,
+          "Cloudflare の ALLOWED_EMAIL に入れたアドレスとは別です。",
+          "",
+          "ふだんの Google アカウントでやり直してください。",
+        ].join("\n"),
+        403,
+      );
+    }
+    stored.email = email;
+    who = email;
+  } else {
+    /**
+     * ブランドアカウントにはメールアドレスがありません。
+     * 代わりに、どのチャンネルの許可が取れたかを YouTube に聞いて控えます。
+     * すでに控えがあって別のチャンネルだった場合は、上書きせずに断ります。
+     */
+    if (!body.access_token) return text("使い捨ての鍵が返りませんでした。やり直してください。", 400);
+
+    const chRes = await fetch(
+      "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true",
+      { headers: { authorization: `Bearer ${body.access_token}` } },
+    );
+    const chJson = (await chRes.json()) as {
+      items?: { id?: string; snippet?: { title?: string } }[];
+    };
+    const ch = chJson.items?.[0];
+    if (!chRes.ok || !ch?.id) {
+      return text(
+        [
+          "許可は出ましたが、どのチャンネルかを確かめられませんでした。控えは保存していません。",
+          "",
+          `YouTube からの返事：${chRes.status}`,
+          "上げ先のチャンネルを持っているブランドアカウントを選んでやり直してください。",
+        ].join("\n"),
+        400,
+      );
+    }
+
+    const prev = await env.STORE.get(permit.key);
+    if (prev) {
+      const before = JSON.parse(await prev.text()) as StoredAuth;
+      if (before.channel_id && before.channel_id !== ch.id) {
+        return text(
+          [
+            "先に登録してあるチャンネルと違うため、控えを差し替えませんでした。",
+            "",
+            `いま登録してあるチャンネル：${before.channel_title ?? before.channel_id}`,
+            `今回許可を出したチャンネル：${ch.snippet?.title ?? ch.id}`,
+            "",
+            "上げ先を本当に変える場合は、開発部に伝えてください。",
+          ].join("\n"),
+          409,
+        );
+      }
+    }
+
+    stored.channel_id = ch.id;
+    stored.channel_title = ch.snippet?.title ?? "";
+    who = `${stored.channel_title}（${ch.id}）`;
+  }
+  await env.STORE.put(permit.key, JSON.stringify(stored));
+
+  const other: PermitName = held === "youtube" ? "workspace" : "youtube";
+  const otherDone = (await env.STORE.head(PERMITS[other].key)) !== null;
 
   return text(
     [
-      "許可を保存しました。ここで完了です。この画面は閉じて大丈夫です。",
+      `保存しました：${permit.label}`,
       "",
-      `アカウント：${email}`,
+      `対象：${who}`,
       `保存した日時：${stored.obtained_at}`,
       "",
-      "取れた許可：",
-      ...(stored.scope ? stored.scope.split(" ").map((s) => "  ・" + s) : ["  （表示なし）"]),
-      "",
-      "生きているかは /oauth/status で見られます。",
+      otherDone
+        ? "2本とも終わりました。この画面は閉じて大丈夫です。"
+        : [
+            "残り1本あります。下を開いて、同じように許可してください。",
+            "",
+            `  ${PERMITS[other].label}`,
+            `      ${new URL("/oauth/start?for=" + other, request.url).toString()}`,
+          ].join("\n"),
     ].join("\n"),
   );
 }
 
 /** 更新用の鍵から、使い捨ての鍵を1本作る（次の版の本処理でも使う） */
-async function getAccessToken(env: Env): Promise<{ ok: true; token: string } | { ok: false; why: string }> {
-  const obj = await env.STORE.get(AUTH_KEY);
-  if (!obj) return { ok: false, why: "許可の控えがまだありません。/oauth/start から1回通してください。" };
+async function getAccessToken(
+  env: Env,
+  which: PermitName,
+): Promise<{ ok: true; token: string } | { ok: false; why: string }> {
+  const obj = await env.STORE.get(PERMITS[which].key);
+  if (!obj) return { ok: false, why: "控えがまだありません。/oauth/start から通してください。" };
 
   const saved = JSON.parse(await obj.text()) as StoredAuth;
   const res = await fetch("https://oauth2.googleapis.com/token", {
@@ -275,29 +392,32 @@ async function getAccessToken(env: Env): Promise<{ ok: true; token: string } | {
 
 async function oauthStatus(env: Env): Promise<Response> {
   const missing = missingSetup(env);
-  const obj = await env.STORE.get(AUTH_KEY);
-
   const lines: string[] = ["--- 許可の状態 ---", ""];
-  lines.push(`設定の3つ　　　${missing.length === 0 ? "そろっている" : "足りない：" + missing.join(", ")}`);
-
-  if (!obj) {
-    lines.push("控え　　　　　まだ無い");
-    lines.push("");
-    lines.push("/oauth/start を開いて、1回だけ許可を通してください。");
-    return text(lines.join("\n"));
-  }
-
-  const saved = JSON.parse(await obj.text()) as StoredAuth;
-  lines.push(`控え　　　　　ある（${saved.obtained_at} に保存）`);
-  lines.push(`アカウント　　${saved.email}`);
-
-  if (missing.length > 0) {
-    return text(lines.join("\n"));
-  }
-
-  const t = await getAccessToken(env);
-  lines.push(`いま使えるか　${t.ok ? "使える" : "使えない：" + t.why}`);
+  lines.push(`設定の3つ　${missing.length === 0 ? "そろっている" : "足りない：" + missing.join(", ")}`);
   lines.push("");
+
+  for (const which of ["youtube", "workspace"] as PermitName[]) {
+    const permit = PERMITS[which];
+    lines.push(`■ ${permit.label}`);
+    const obj = await env.STORE.get(permit.key);
+    if (!obj) {
+      lines.push("    控え　　　　まだ無い");
+      lines.push(`    通す住所　　/oauth/start?for=${which}`);
+      lines.push("");
+      continue;
+    }
+    const saved = JSON.parse(await obj.text()) as StoredAuth;
+    lines.push(`    控え　　　　ある（${saved.obtained_at} に保存）`);
+    lines.push(
+      `    対象　　　　${saved.email ?? saved.channel_title ?? saved.channel_id ?? "（不明）"}`,
+    );
+    if (missing.length === 0) {
+      const t = await getAccessToken(env, which);
+      lines.push(`    いま使えるか　${t.ok ? "使える" : "使えない：" + t.why}`);
+    }
+    lines.push("");
+  }
+
   lines.push("この画面に鍵そのものは表示しません。");
   return text(lines.join("\n"));
 }
@@ -498,7 +618,7 @@ export default {
           [
             "zoom-to-youtube（第2版）",
             "",
-            "  /oauth/start                     … Google の許可を1回通す",
+            "  /oauth/start                     … 許可の通し方（2本に分かれています）",
             "  /oauth/status                    … 許可が生きているかを見る",
             "  /probe?share=<共有リンク>        … 録画の情報を取る",
             "  /probe?share=<共有リンク>&mode=drain … 動画の本体も読み切って測る",
