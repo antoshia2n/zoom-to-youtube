@@ -9,8 +9,7 @@ Zoom のクラウド録画を Google ドライブと YouTube へ運ぶ処理。
 | `GET /setup/sheet` | 管理用スプレッドシートを1枚作る（すでにあれば作らない） |
 | `GET /run` | シートの未処理の行を1本ずつ通す。途中経過が流れる |
 | `GET /oauth/start` | 許可を通す（2本に分かれている） |
-| `GET /oauth/status` | 許可とシートの状態を見る |
-| `GET /probe?share=...&mode=drain` | Zoom からの転送を測る |
+| `GET /oauth/status` | 許可とシートの状態を見る（控えの取得日と、そこから何日目かも出る） |
 
 5分ごとの自動実行が `/run` と同じ処理を静かに動かす。重ならないよう R2 に錠を置く。
 

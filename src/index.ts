@@ -1,11 +1,10 @@
 /**
- * zoom-to-youtube / 第3版（2026-08-20 開発部・段階 B）
+ * zoom-to-youtube / 第4版（2026-08-21 開発部・測定用の口を外した）
  *
  * できること
  *   /setup/sheet   管理用スプレッドシートを1枚作る（すでにあれば作らない）
  *   /run           シートを見て、未処理の行を1本ずつ最後まで通す（途中経過が出る）
  *   /oauth/*       Google の許可（2本）
- *   /probe         Zoom の録画の情報を取る／転送を測る
  *   5分ごとの自動実行（同じ処理を静かに動かす）
  *
  * 動画の運び方
@@ -792,7 +791,8 @@ async function oauthStatus(env: Env): Promise<Response> {
       continue;
     }
     const saved = JSON.parse(await obj.text()) as StoredAuth;
-    lines.push(`    控え　　　　ある（${saved.obtained_at}）`);
+    const days = Math.floor((Date.now() - Date.parse(saved.obtained_at)) / 86400000) + 1;
+    lines.push(`    控え　　　　ある（${saved.obtained_at}・取得から ${days} 日目）`);
     lines.push(`    対象　　　　${saved.email ?? saved.channel_title ?? "（不明）"}`);
     if (missing.length === 0) {
       const t = await accessToken(env, which);
@@ -807,37 +807,6 @@ async function oauthStatus(env: Env): Promise<Response> {
   lines.push("");
   lines.push("この画面に鍵そのものは表示しません。");
   return text(lines.join("\n"));
-}
-
-/* ================================================================== */
-/* Zoom の測定（残してあります）                                       */
-/* ================================================================== */
-
-async function runProbe(share: string, mode: string, out: (s: string) => void): Promise<void> {
-  const t0 = Date.now();
-  const z = await readZoom(share);
-  const when = jst(z.startedAt);
-  out(`題名　　　${z.topic}`);
-  out(`収録日　　${when.date}`);
-  out(`長さ　　　${Math.round(z.durationSec / 60)} 分`);
-  out(`文字起こし${z.transcript ? `${z.transcript.length} 文字` : "なし"}`);
-  out(`直リンク元${new URL(z.mp4Url).hostname}`);
-  out("");
-  if (mode !== "drain") {
-    out(`ここまで ${sec(Date.now() - t0)} 秒`);
-    return;
-  }
-  const t1 = Date.now();
-  const dl = await fetch(z.mp4Url, { headers: zHeaders(z.jar, z.playUrl) });
-  if (!dl.body) throw new Error(`本体が ${dl.status} を返しました`);
-  const reader = dl.body.getReader();
-  let bytes = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    bytes += value.byteLength;
-  }
-  out(`読み切った　${mb(bytes)} MB / ${sec(Date.now() - t1)} 秒`);
 }
 
 /* ================================================================== */
@@ -879,7 +848,6 @@ export default {
             "  /run           シートの未処理の行を通す",
             "  /oauth/status  許可とシートの状態を見る",
             "  /oauth/start   許可を通す（2本）",
-            "  /probe?share=…&mode=drain  Zoom からの転送を測る",
           ].join("\n"),
         );
 
@@ -908,12 +876,6 @@ export default {
 
       case "/run":
         return streamed((out) => withLock(env, () => runAll(env, out), out));
-
-      case "/probe": {
-        const share = url.searchParams.get("share");
-        if (!share || !share.startsWith("https://")) return text("share に Zoom の共有リンクを入れてください", 400);
-        return streamed((out) => runProbe(share, url.searchParams.get("mode") ?? "meta", out));
-      }
 
       default:
         return text("見つかりません", 404);
