@@ -1,15 +1,26 @@
 /**
- * zoom-to-youtube / 第4版（2026-08-21 開発部・測定用の口を外した）
+ * zoom-to-youtube / 第5版（2026-08-21 開発部・段階 C）
  *
  * できること
  *   /setup/sheet   管理用スプレッドシートを1枚作る（すでにあれば作らない）
- *   /run           シートを見て、未処理の行を1本ずつ最後まで通す（途中経過が出る）
+ *   /run           シートを見て、通すべき行を1本ずつ進める（途中経過が出る）
  *   /oauth/*       Google の許可（2本）
  *   5分ごとの自動実行（同じ処理を静かに動かす）
  *
  * 動画の運び方
  *   Zoom から 8 MB ずつ読んで、そのまま Google へ渡す。全体を溜め込まないので
  *   メモリの枠（128 MB）に触れない。Zoom は途中からの読み出しに対応している。
+ *
+ * 第5版で足したこと（段階 C）
+ *   1. 途中経過を録画ごとに R2 へ残す（job/ の下）。8 MB 進むたびに書き直す
+ *   2. 途中で切れた行と、エラーになった行を、次の実行が自動で拾い直して続きから進める
+ *   3. すでに YouTube へ上がっている録画は、二度と上げない
+ *   4. 錠は動いている間ずっと押し直す。3分押されていなければ、前の実行は落ちたものとみなす
+ *   5. 1回の実行は10分で自分から畳む。残りは次の自動実行が続ける
+ *
+ * 残る限界（分かったうえで、そのままにしてある）
+ *   Google の鍵は1時間で切れる。1本の送り出しが1時間を超えると途中で止まるが、
+ *   そこまでの進み具合は残っているので、次の実行が続きから進める。
  */
 
 interface Env {
@@ -27,6 +38,16 @@ const CHUNK = 8 * 1024 * 1024;
 const ROOT_FOLDER = "講義コンテンツ";
 const SHEET_KEY = "config/sheet.json";
 const LOCK_KEY = "run/lock";
+const JOB_PREFIX = "job/";
+
+/** 錠がこの時間だけ押し直されていなければ、前の実行は落ちたものとみなす */
+const LOCK_STALE_MS = 3 * 60 * 1000;
+
+/** 1回の実行はこの時間で自分から畳む（残りは次の自動実行が続ける） */
+const RUN_BUDGET_MS = 10 * 60 * 1000;
+
+/** 処理の途中を表す状態。この状態のまま残っている行は、前の実行が落ちた残り */
+const MIDWAY: string[] = ["Zoom取得中", "Drive保存済み", "YouTube投稿中"];
 
 const HEADERS = [
   "処理ID",
@@ -86,6 +107,44 @@ interface StoredAuth {
   email?: string;
   channel_id?: string;
   channel_title?: string;
+}
+
+/** 1本ぶんの途中経過。録画ごとに1つ、R2 に残す */
+interface Job {
+  pid: string;
+  share: string;
+  rowNo: number;
+  title: string;
+  date: string;
+  size: number;
+  driveFolderId?: string;
+  driveFolderUrl?: string;
+  transcriptDone?: boolean;
+  driveSession?: string;
+  driveDone?: boolean;
+  ytSession?: string;
+  youtubeId?: string;
+  youtubeUrl?: string;
+  privacy?: string;
+  updatedAt: string;
+}
+
+/** 受け口が期限切れになったときに投げる */
+class SessionGone extends Error {}
+
+function jobKey(pid: string): string {
+  return JOB_PREFIX + pid.replace(/[^A-Za-z0-9._-]/g, "_") + ".json";
+}
+
+async function loadJob(env: Env, pid: string): Promise<Job | null> {
+  const o = await env.STORE.get(jobKey(pid));
+  if (!o) return null;
+  return JSON.parse(await o.text()) as Job;
+}
+
+async function saveJob(env: Env, job: Job): Promise<void> {
+  job.updatedAt = new Date().toISOString();
+  await env.STORE.put(jobKey(job.pid), JSON.stringify(job));
 }
 
 /* ================================================================== */
@@ -226,6 +285,8 @@ async function go(jar: Jar, url: string, referer?: string, accept?: string): Pro
 
 interface ZoomInfo {
   jar: Jar;
+  /** 録画そのものの番号。同じ録画かどうかの判定に使う */
+  pid: string;
   playUrl: string;
   mp4Url: string;
   transcript: string | null;
@@ -277,6 +338,7 @@ async function readZoom(share: string): Promise<ZoomInfo> {
 
   return {
     jar,
+    pid,
     playUrl,
     mp4Url: r.mp4Url,
     transcript,
@@ -365,10 +427,12 @@ async function relay(
   size: number,
   session: string,
   token: string,
+  from: number,
   out: (s: string) => void,
+  beat: () => Promise<void>,
 ): Promise<Record<string, unknown>> {
   const t0 = Date.now();
-  let sent = 0;
+  let sent = from;
 
   while (sent < size) {
     const end = Math.min(sent + CHUNK, size) - 1;
@@ -392,18 +456,96 @@ async function relay(
 
     if (put.status === 308) {
       sent += buf.byteLength;
+      await beat();
       out(`      ${mb(sent)} / ${mb(size)} MB（${sec(Date.now() - t0)} 秒）`);
       continue;
     }
     if (put.ok) {
       sent += buf.byteLength;
+      await beat();
       out(`      ${mb(sent)} / ${mb(size)} MB（${sec(Date.now() - t0)} 秒）完了`);
       const raw = await put.text();
       return raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
     }
+    if (put.status === 404 || put.status === 410) {
+      await put.body?.cancel();
+      throw new SessionGone("受け口の期限が切れました");
+    }
     throw new Error(`送り出しが止まりました ${put.status}：${(await put.text()).slice(0, 600)}`);
   }
   throw new Error("送り終えたのに Google から完了の返事がありません");
+}
+
+type Probe =
+  | { kind: "sent"; sent: number }
+  | { kind: "done"; body: Record<string, unknown> }
+  | { kind: "gone" };
+
+/** 受け口がどこまで受け取ったかを聞く */
+async function askSession(token: string, session: string, size: number): Promise<Probe> {
+  const res = await gFetch(token, session, {
+    method: "PUT",
+    headers: { "content-range": `bytes */${size}` },
+  });
+  if (res.ok) {
+    const raw = await res.text();
+    return { kind: "done", body: raw ? (JSON.parse(raw) as Record<string, unknown>) : {} };
+  }
+  if (res.status === 308) {
+    const range = res.headers.get("range");
+    await res.body?.cancel();
+    if (!range) return { kind: "sent", sent: 0 };
+    const end = Number(range.split("-")[1]);
+    return { kind: "sent", sent: Number.isFinite(end) ? end + 1 : 0 };
+  }
+  await res.body?.cancel();
+  return { kind: "gone" };
+}
+
+/** 動画を1か所へ送る。受け口があれば続きから、無ければ開いてから */
+async function sendVideo(
+  z: ZoomInfo,
+  size: number,
+  token: string,
+  open: () => Promise<string>,
+  had: string | undefined,
+  remember: (session: string) => Promise<void>,
+  out: (s: string) => void,
+  beat: () => Promise<void>,
+): Promise<Record<string, unknown>> {
+  let session = had;
+  let from = 0;
+
+  if (session) {
+    const asked = await askSession(token, session, size);
+    if (asked.kind === "done") {
+      out("      すでに送り終えていました");
+      return asked.body;
+    }
+    if (asked.kind === "sent") {
+      from = asked.sent;
+      out(`      続きから送ります（${mb(from)} / ${mb(size)} MB まで済み）`);
+    } else {
+      out("      前の受け口はもう使えないので、開き直します");
+      session = undefined;
+    }
+  }
+
+  if (!session) {
+    session = await open();
+    from = 0;
+    await remember(session);
+  }
+
+  try {
+    return await relay(z, size, session, token, from, out, beat);
+  } catch (e) {
+    if (!(e instanceof SessionGone)) throw e;
+    out("      受け口が途中で使えなくなったので、開き直して最初から送ります");
+    const fresh = await open();
+    await remember(fresh);
+    return await relay(z, size, fresh, token, 0, out, beat);
+  }
 }
 
 /* ================================================================== */
@@ -474,6 +616,7 @@ async function processRow(
   rowNo: number,
   row: string[],
   out: (s: string) => void,
+  beat: () => Promise<void>,
 ): Promise<void> {
   const set = async (state: string, err = "") => {
     row[COL.state] = state;
@@ -487,12 +630,23 @@ async function processRow(
   try {
     out(`【${rowNo}行目】${row[COL.title] || "（題名なし）"}`);
     await set("Zoom取得中");
+    await beat();
 
     const z = await readZoom(row[COL.share].trim());
     const when = jst(z.startedAt);
     const title = safeName(row[COL.title] || z.topic || "無題");
     row[COL.date] = when.date;
     out(`  収録日 ${when.date} ／ 長さ ${Math.round(z.durationSec / 60)} 分`);
+
+    // 同じ録画がすでに上がっていないか
+    let job = await loadJob(env, z.pid);
+    if (job?.youtubeUrl && job.rowNo !== rowNo) {
+      row[COL.drive] = job.driveFolderUrl ?? "";
+      row[COL.youtube] = job.youtubeUrl;
+      await set("完了", `同じ録画が ${job.rowNo} 行目ですでに上がっています。上げ直していません`);
+      out(`  同じ録画が ${job.rowNo} 行目で上がっているので、上げ直しませんでした`);
+      return;
+    }
 
     // 動画の大きさを先に聞く
     const head = await fetch(z.mp4Url, { headers: { ...zHeaders(z.jar, z.playUrl), Range: "bytes=0-0" } });
@@ -502,64 +656,124 @@ async function processRow(
     if (!size) throw new Error("動画の大きさが分かりません（Zoom が content-range を返しません）");
     out(`  動画の大きさ ${mb(size)} MB`);
 
+    if (!job) {
+      job = { pid: z.pid, share: row[COL.share].trim(), rowNo, title, date: when.date, size, updatedAt: "" };
+    } else {
+      job.rowNo = rowNo;
+      job.title = title;
+      job.date = when.date;
+      job.size = size;
+      out("  前回の途中経過が残っていました。続きから進めます");
+    }
+    await saveJob(env, job);
+    const j = job;
+
     // ドライブの置き場を用意する
-    const root = await folder(wsToken, ROOT_FOLDER, null);
-    const yearId = await folder(wsToken, when.year, root);
-    const ymId = await folder(wsToken, when.ym, yearId);
-    const dest = await folder(wsToken, `${when.date}_${title}`, ymId);
-    row[COL.drive] = `https://drive.google.com/drive/folders/${dest}`;
-    out(`  置き場を用意した`);
+    if (!j.driveFolderId) {
+      const root = await folder(wsToken, ROOT_FOLDER, null);
+      const yearId = await folder(wsToken, when.year, root);
+      const ymId = await folder(wsToken, when.ym, yearId);
+      const dest = await folder(wsToken, `${when.date}_${title}`, ymId);
+      j.driveFolderId = dest;
+      j.driveFolderUrl = `https://drive.google.com/drive/folders/${dest}`;
+      await saveJob(env, j);
+      out("  置き場を用意した");
+    } else {
+      out("  置き場は用意済みです");
+    }
+    row[COL.drive] = j.driveFolderUrl as string;
 
     // 文字起こし
-    if (z.transcript) {
-      await putSmallFile(wsToken, `${when.date}_${title}.vtt`, dest, "text/vtt", z.transcript);
+    if (j.transcriptDone) {
+      out("  文字起こしは保存済みです");
+    } else if (z.transcript) {
+      await putSmallFile(wsToken, `${when.date}_${title}.vtt`, j.driveFolderId as string, "text/vtt", z.transcript);
+      j.transcriptDone = true;
+      await saveJob(env, j);
       out(`  文字起こしを保存した（${z.transcript.length} 文字）`);
     } else {
-      out(`  文字起こしは Zoom 側にありません`);
+      j.transcriptDone = true;
+      await saveJob(env, j);
+      out("  文字起こしは Zoom 側にありません");
     }
 
     // 動画をドライブへ
-    out("  動画をドライブへ");
-    const driveSession = await openSession(
-      wsToken,
-      "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id",
-      { name: `${when.date}_${title}.mp4`, parents: [dest] },
-      size,
-      "video/mp4",
-    );
-    await relay(z, size, driveSession, wsToken, out);
+    if (j.driveDone) {
+      out("  動画はドライブへ保存済みです");
+    } else {
+      out("  動画をドライブへ");
+      await sendVideo(
+        z,
+        size,
+        wsToken,
+        () =>
+          openSession(
+            wsToken,
+            "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id",
+            { name: `${when.date}_${title}.mp4`, parents: [j.driveFolderId] },
+            size,
+            "video/mp4",
+          ),
+        j.driveSession,
+        async (session) => {
+          j.driveSession = session;
+          await saveJob(env, j);
+        },
+        out,
+        beat,
+      );
+      j.driveDone = true;
+      await saveJob(env, j);
+    }
     await set("Drive保存済み");
 
     // 動画を YouTube へ
-    out("  動画を YouTube へ（限定公開で依頼）");
-    await set("YouTube投稿中");
-    const yt = await accessToken(env, "youtube");
-    if (!yt.ok) throw new Error(yt.why);
+    if (j.youtubeUrl) {
+      out("  YouTube には上げ済みです");
+    } else {
+      out("  動画を YouTube へ（限定公開で依頼）");
+      await set("YouTube投稿中");
+      const yt = await accessToken(env, "youtube");
+      if (!yt.ok) throw new Error(yt.why);
 
-    const ytSession = await openSession(
-      yt.token,
-      "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
-      {
-        snippet: { title: (row[COL.title] || z.topic || "無題").slice(0, 100), description: "" },
-        /**
-         * 2026-08-20：この チャンネル では、上げたあと手で 限定公開 に変えても
-         * 非公開に戻されないことを実物で確認した（固定は掛かっていない）。
-         * そこで最初から 限定公開 で頼む。もし YouTube 側が非公開に戻した場合でも、
-         * これまでと同じ状態になるだけで、悪くはならない。
-         */
-        status: { privacyStatus: "unlisted", selfDeclaredMadeForKids: false },
-      },
-      size,
-      "video/mp4",
-    );
-    const video = (await relay(z, size, ytSession, yt.token, out)) as {
-      id?: string;
-      status?: { privacyStatus?: string };
-    };
-    if (!video.id) throw new Error("YouTube が動画の番号を返しません");
-    row[COL.youtube] = `https://www.youtube.com/watch?v=${video.id}`;
+      const video = (await sendVideo(
+        z,
+        size,
+        yt.token,
+        () =>
+          openSession(
+            yt.token,
+            "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
+            {
+              snippet: { title: (row[COL.title] || z.topic || "無題").slice(0, 100), description: "" },
+              /**
+               * 2026-08-20：この チャンネル では、上げたあと手で 限定公開 に変えても
+               * 非公開に戻されないことを実物で確認した（固定は掛かっていない）。
+               * そこで最初から 限定公開 で頼む。
+               */
+              status: { privacyStatus: "unlisted", selfDeclaredMadeForKids: false },
+            },
+            size,
+            "video/mp4",
+          ),
+        j.ytSession,
+        async (session) => {
+          j.ytSession = session;
+          await saveJob(env, j);
+        },
+        out,
+        beat,
+      )) as { id?: string; status?: { privacyStatus?: string } };
 
-    const privacy = video.status?.privacyStatus ?? "不明";
+      if (!video.id) throw new Error("YouTube が動画の番号を返しません");
+      j.youtubeId = video.id;
+      j.youtubeUrl = `https://www.youtube.com/watch?v=${video.id}`;
+      j.privacy = video.status?.privacyStatus ?? "不明";
+      await saveJob(env, j);
+    }
+
+    row[COL.youtube] = j.youtubeUrl as string;
+    const privacy = j.privacy ?? "不明";
     const jp = privacy === "unlisted" ? "限定公開" : privacy === "private" ? "非公開" : privacy;
     out(`  YouTube 側の公開設定：${jp}`);
 
@@ -577,7 +791,9 @@ async function processRow(
   }
 }
 
-async function runAll(env: Env, out: (s: string) => void): Promise<void> {
+async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<void>): Promise<void> {
+  const started = Date.now();
+
   const ws = await accessToken(env, "workspace");
   if (!ws.ok) {
     out(`止まりました：${ws.why}`);
@@ -589,37 +805,62 @@ async function runAll(env: Env, out: (s: string) => void): Promise<void> {
     return;
   }
 
+  /**
+   * 錠を取れた実行から見ると、他の実行は走っていない。
+   * だから「処理の途中」の状態のまま残っている行は、必ず前の実行が落ちた残り。
+   */
   const rows = await readRows(ws.token, sid);
-  const targets: { no: number; row: string[] }[] = [];
+  const targets: { no: number; row: string[]; why: string }[] = [];
   rows.forEach((row, i) => {
     const share = (row[COL.share] ?? "").trim();
     const state = (row[COL.state] ?? "").trim();
-    if (share && (state === "" || state === "未処理")) targets.push({ no: i + 2, row });
+    if (!share) return;
+    if (state === "" || state === "未処理") targets.push({ no: i + 2, row, why: "未処理" });
+    else if (state === "エラー") targets.push({ no: i + 2, row, why: "前のエラーからやり直し" });
+    else if (MIDWAY.includes(state)) targets.push({ no: i + 2, row, why: `${state} のまま止まっていた続き` });
   });
 
-  out(`未処理の行：${targets.length} 件`);
+  out(`通す行：${targets.length} 件`);
   out("");
+
   for (const t of targets) {
-    await processRow(env, ws.token, sid, t.no, t.row, out);
+    if (Date.now() - started > RUN_BUDGET_MS) {
+      out(`ここで一度畳みます（${sec(Date.now() - started)} 秒）。残りは次の自動実行が続けます。`);
+      return;
+    }
+    out(`（${t.why}）`);
+    await processRow(env, ws.token, sid, t.no, t.row, out, beat);
     out("");
   }
   out("ここまでです。");
 }
 
-/** 同時に走らないようにする（5分ごとの自動実行と手動が重ならないため） */
-async function withLock(env: Env, fn: () => Promise<void>, out: (s: string) => void): Promise<void> {
-  const now = Date.now();
+/**
+ * 同時に走らないようにする（5分ごとの自動実行と手動が重ならないため）。
+ * 錠は動いている間ずっと押し直す。3分押されていなければ、前の実行は落ちたものとみなして引き取る。
+ */
+async function withLock(
+  env: Env,
+  fn: (beat: () => Promise<void>) => Promise<void>,
+  out: (s: string) => void,
+): Promise<void> {
   const held = await env.STORE.get(LOCK_KEY);
   if (held) {
     const at = Number(await held.text());
-    if (now - at < 20 * 60 * 1000) {
+    if (Date.now() - at < LOCK_STALE_MS) {
       out("いま別の処理が動いています。終わるまで待ってください。");
       return;
     }
+    out("前の処理が落ちたまま残っていたので、引き取ります。");
   }
-  await env.STORE.put(LOCK_KEY, String(now));
+
+  const beat = async () => {
+    await env.STORE.put(LOCK_KEY, String(Date.now()));
+  };
+
+  await beat();
   try {
-    await fn();
+    await fn(beat);
   } finally {
     await env.STORE.delete(LOCK_KEY);
   }
@@ -875,7 +1116,7 @@ export default {
       }
 
       case "/run":
-        return streamed((out) => withLock(env, () => runAll(env, out), out));
+        return streamed((out) => withLock(env, (beat) => runAll(env, out, beat), out));
 
       default:
         return text("見つかりません", 404);
@@ -884,6 +1125,10 @@ export default {
 
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     const log: string[] = [];
-    ctx.waitUntil(withLock(env, () => runAll(env, (s) => log.push(s)), (s) => log.push(s)).then(() => console.log(log.join("\n"))));
+    ctx.waitUntil(
+      withLock(env, (beat) => runAll(env, (line) => log.push(line), beat), (line) => log.push(line)).then(() =>
+        console.log(log.join("\n")),
+      ),
+    );
   },
 };
