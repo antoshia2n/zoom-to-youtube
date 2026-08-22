@@ -120,6 +120,8 @@ interface Job {
   driveFolderId?: string;
   driveFolderUrl?: string;
   transcriptDone?: boolean;
+  /** 読める版（Google ドキュメント）を作り終えたか */
+  transcriptDocDone?: boolean;
   driveSession?: string;
   driveDone?: boolean;
   ytSession?: string;
@@ -349,6 +351,94 @@ async function readZoom(share: string): Promise<ZoomInfo> {
 }
 
 /* ================================================================== */
+/* 文字起こしを読める文章に直す                                        */
+/* ================================================================== */
+
+/**
+ * Zoom の聞き取りが決まって外す言葉の直し表。
+ * ここに足すときは、実際に外れた実物を見てから足すこと（思いつきで足さない）。
+ */
+const KIKITORI_NAOSHI: [RegExp, string][] = [
+  [/シェアロブ|シアラボ|しゃらぼ|シェアラボ/g, "しあらぼ"],
+  [/橘明/g, "橘玲"],
+  [/ポコポコ/g, "ぽこぽこ"],
+];
+
+/** 1 つの段落の目安の長さ。これを超えたら次のかたまりへ分ける */
+const DANRAKU_LIMIT = 300;
+
+interface PlainTranscript {
+  /** 話した人の名前。Zoom が付けたものをそのまま */
+  speakers: string[];
+  /** 話した人が 1 人だけか */
+  solo: boolean;
+  /** 段落の数 */
+  paragraphs: number;
+  /** 本文 */
+  body: string;
+}
+
+/**
+ * Zoom の文字起こし（時刻つき）を、読める文章に直す。
+ * ・番号の行と時刻の行を落とす
+ * ・同じ人が続けて話しているところは 1 つの段落にまとめる
+ * ・話した人が 1 人だけのときは名前を出さない（毎行に同じ名前が並ぶのを避ける）
+ */
+function vttToPlain(vtt: string): PlainTranscript {
+  const cues: { who: string; text: string }[] = [];
+
+  for (const block of vtt.replace(/\r/g, "").split(/\n{2,}/)) {
+    const lines = block.split("\n").map((s) => s.trim()).filter(Boolean);
+    if (!lines.length) continue;
+    if (/^WEBVTT/.test(lines[0])) continue;
+
+    const body = lines.filter((l) => !/^\d+$/.test(l) && !l.includes("-->")).join(" ").trim();
+    if (!body) continue;
+
+    const m = body.match(/^([^:：]{1,20})[:：]\s*(.*)$/);
+    if (m) {
+      if (m[2].trim()) cues.push({ who: m[1].trim(), text: m[2].trim() });
+    } else {
+      cues.push({ who: "", text: body });
+    }
+  }
+
+  const speakers = [...new Set(cues.map((c) => c.who).filter(Boolean))];
+  const solo = speakers.length <= 1;
+
+  const paras: { who: string; text: string }[] = [];
+  let cur: { who: string; text: string } | null = null;
+  for (const c of cues) {
+    if (!c.text) continue;
+    if (cur && cur.who === c.who && cur.text.length < DANRAKU_LIMIT) cur.text += c.text;
+    else {
+      if (cur) paras.push(cur);
+      cur = { who: c.who, text: c.text };
+    }
+  }
+  if (cur) paras.push(cur);
+
+  const lines = paras.map((p) => (solo || !p.who ? p.text : `${p.who}：${p.text}`));
+  let body = lines.join("\n\n");
+  for (const [re, to] of KIKITORI_NAOSHI) body = body.replace(re, to);
+
+  return { speakers, solo, paragraphs: lines.length, body };
+}
+
+/** 読める版の先頭に置く見出し */
+function docHeader(title: string, date: string, durationSec: number, t: PlainTranscript): string {
+  const min = Math.round(durationSec / 60);
+  const who = t.speakers.length ? t.speakers.join("・") : "（名前なし）";
+  return [
+    title,
+    `収録日 ${date} ／ 長さ ${min} 分 ／ 話した人 ${who}`,
+    "この文章は Zoom の聞き取りを自動で直したものです。固有名詞と数字は元の動画で確かめてください。",
+    "",
+    "",
+  ].join("\n");
+}
+
+/* ================================================================== */
 /* ドライブ                                                            */
 /* ================================================================== */
 
@@ -384,11 +474,15 @@ async function putSmallFile(
   parent: string,
   mime: string,
   body: string,
+  /** ドライブ側で何として持つか。Google ドキュメントにしたいときだけ渡す */
+  driveMime?: string,
 ): Promise<string> {
   const boundary = "b" + crypto.randomUUID().replace(/-/g, "");
+  const meta: Record<string, unknown> = { name, parents: [parent] };
+  if (driveMime) meta.mimeType = driveMime;
   const payload =
     `--${boundary}\r\ncontent-type: application/json; charset=UTF-8\r\n\r\n` +
-    JSON.stringify({ name, parents: [parent] }) +
+    JSON.stringify(meta) +
     `\r\n--${boundary}\r\ncontent-type: ${mime}; charset=UTF-8\r\n\r\n` +
     body +
     `\r\n--${boundary}--`;
@@ -683,7 +777,7 @@ async function processRow(
     }
     row[COL.drive] = j.driveFolderUrl as string;
 
-    // 文字起こし
+    // 文字起こし（時刻つきの元のまま）
     if (j.transcriptDone) {
       out("  文字起こしは保存済みです");
     } else if (z.transcript) {
@@ -693,8 +787,29 @@ async function processRow(
       out(`  文字起こしを保存した（${z.transcript.length} 文字）`);
     } else {
       j.transcriptDone = true;
+      j.transcriptDocDone = true;
       await saveJob(env, j);
       out("  文字起こしは Zoom 側にありません");
+    }
+
+    // 文字起こしの読める版（Google ドキュメント）
+    if (j.transcriptDocDone) {
+      out("  読める版は作成済みです");
+    } else if (z.transcript) {
+      const plain = vttToPlain(z.transcript);
+      await putSmallFile(
+        wsToken,
+        `${when.date}_${title}_文字起こし`,
+        j.driveFolderId as string,
+        "text/plain",
+        docHeader(title, when.date, z.durationSec, plain) + plain.body,
+        "application/vnd.google-apps.document",
+      );
+      j.transcriptDocDone = true;
+      await saveJob(env, j);
+      out(
+        `  読める版を作った（話した人 ${plain.speakers.length} 人・段落 ${plain.paragraphs}・${plain.body.length} 文字）`,
+      );
     }
 
     // 動画をドライブへ
