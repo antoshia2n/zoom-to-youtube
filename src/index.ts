@@ -1,5 +1,8 @@
 /**
- * zoom-to-youtube / 第5版（2026-08-21 開発部・段階 C）
+ * zoom-to-youtube / 第7版（2026-08-23 開発部・段階 C）
+ *
+ * 版の履歴の注意：第6版（文字起こしの読める版）では、この見出しが第5版のまま
+ * 残っていた。版を上げるときは必ずこの行も直すこと。
  *
  * できること
  *   /setup/sheet   管理用スプレッドシートを1枚作る（すでにあれば作らない）
@@ -18,9 +21,21 @@
  *   4. 錠は動いている間ずっと押し直す。3分押されていなければ、前の実行は落ちたものとみなす
  *   5. 1回の実行は10分で自分から畳む。残りは次の自動実行が続ける
  *
+ * 第7版で足したこと・直したこと
+ *   1. 【直し】途中経過の控えの名前を「再生番号」から「録画そのものの番号」に変えた。
+ *      再生番号は同じ共有リンクでも毎回変わるため（2026-08-23 に同じ録画へ3回・
+ *      別の録画へ1回あたって実測）、控えが二度と見つからず、第5版・第6版では
+ *      途中からの再開も二重投稿の防止もまったく効いていなかった。
+ *   2. 【追加】分かれている録画をエラーにする（終わりの条件4）。Zoom の共有リンクの
+ *      返りには本数を示す欄が無いので（72項目を1本の録画の70項目と突き合わせて確認）、
+ *      Zoom 本体の口に会議の番号で問い合わせ、本体の数を数える。
+ *   3. 【追加】/zoom/check　共有リンクを1本渡すと、本数だけを数えて返す。何も上げない。
+ *
  * 残る限界（分かったうえで、そのままにしてある）
  *   Google の鍵は1時間で切れる。1本の送り出しが1時間を超えると途中で止まるが、
  *   そこまでの進み具合は残っているので、次の実行が続きから進める。
+ *   分かれた録画を全部上げること（終わりの条件5）は作っていない。4 でエラーになるので、
+ *   Naoki が行を分けて貼り直す。
  */
 
 interface Env {
@@ -28,12 +43,20 @@ interface Env {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   ALLOWED_EMAIL?: string;
+  /** Zoom 本体の口に問い合わせるための3つ（Server-to-Server OAuth） */
+  ZOOM_ACCOUNT_ID?: string;
+  ZOOM_CLIENT_ID?: string;
+  ZOOM_CLIENT_SECRET?: string;
 }
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
   "(KHTML, like Gecko) Chrome/126.0 Safari/537.36";
 const ZOOM_BASE = "https://us02web.zoom.us";
+
+/** Zoom 本体の口（共有リンクの側ではなく、アカウントの持ち物として録画を見る側） */
+const ZOOM_TOKEN_URL = "https://zoom.us/oauth/token";
+const ZOOM_API = "https://api.zoom.us/v2";
 const CHUNK = 8 * 1024 * 1024;
 const ROOT_FOLDER = "講義コンテンツ";
 const SHEET_KEY = "config/sheet.json";
@@ -109,9 +132,15 @@ interface StoredAuth {
   channel_title?: string;
 }
 
-/** 1本ぶんの途中経過。録画ごとに1つ、R2 に残す */
+/**
+ * 1本ぶんの途中経過。録画ごとに1つ、R2 に残す。
+ *
+ * recId は「録画そのものの番号」。第6版までは「再生番号」を使っていたが、
+ * あれは同じ共有リンクでもアクセスのたびに変わるため、控えが二度と見つからなかった。
+ * recId は同じ録画なら何度取っても同じで、別の録画では別になる（2026-08-23 実測）。
+ */
 interface Job {
-  pid: string;
+  recId: string;
   share: string;
   rowNo: number;
   title: string;
@@ -134,19 +163,19 @@ interface Job {
 /** 受け口が期限切れになったときに投げる */
 class SessionGone extends Error {}
 
-function jobKey(pid: string): string {
-  return JOB_PREFIX + pid.replace(/[^A-Za-z0-9._-]/g, "_") + ".json";
+function jobKey(recId: string): string {
+  return JOB_PREFIX + recId.replace(/[^A-Za-z0-9._-]/g, "_") + ".json";
 }
 
-async function loadJob(env: Env, pid: string): Promise<Job | null> {
-  const o = await env.STORE.get(jobKey(pid));
+async function loadJob(env: Env, recId: string): Promise<Job | null> {
+  const o = await env.STORE.get(jobKey(recId));
   if (!o) return null;
   return JSON.parse(await o.text()) as Job;
 }
 
 async function saveJob(env: Env, job: Job): Promise<void> {
   job.updatedAt = new Date().toISOString();
-  await env.STORE.put(jobKey(job.pid), JSON.stringify(job));
+  await env.STORE.put(jobKey(job.recId), JSON.stringify(job));
 }
 
 /* ================================================================== */
@@ -176,6 +205,15 @@ function missingSetup(env: Env): string[] {
   if (!env.GOOGLE_CLIENT_ID) m.push("GOOGLE_CLIENT_ID");
   if (!env.GOOGLE_CLIENT_SECRET) m.push("GOOGLE_CLIENT_SECRET");
   if (!env.ALLOWED_EMAIL) m.push("ALLOWED_EMAIL");
+  return m;
+}
+
+/** Zoom 本体の口を使うための3つ。値そのものはどの画面にも出さない */
+function missingZoom(env: Env): string[] {
+  const m: string[] = [];
+  if (!env.ZOOM_ACCOUNT_ID) m.push("ZOOM_ACCOUNT_ID");
+  if (!env.ZOOM_CLIENT_ID) m.push("ZOOM_CLIENT_ID");
+  if (!env.ZOOM_CLIENT_SECRET) m.push("ZOOM_CLIENT_SECRET");
   return m;
 }
 
@@ -287,8 +325,15 @@ async function go(jar: Jar, url: string, referer?: string, accept?: string): Pro
 
 interface ZoomInfo {
   jar: Jar;
-  /** 録画そのものの番号。同じ録画かどうかの判定に使う */
+  /**
+   * 再生番号。共有リンクを開くたびに変わる使い捨ての番号で、
+   * 同じ録画かどうかの判定には使えない（2026-08-23 実測）。動画を読むためだけに使う。
+   */
   pid: string;
+  /** 録画そのものの番号。同じ録画なら何度取っても同じ。控えの名前に使う */
+  recId: string;
+  /** 会議の番号。Zoom 本体の口に「この会議の録画を全部ください」と聞くときに使う */
+  meetingUuid: string;
   playUrl: string;
   mp4Url: string;
   transcript: string | null;
@@ -327,6 +372,7 @@ async function readZoom(share: string): Promise<ZoomInfo> {
     mp4Url?: string;
     transcriptUrl?: string;
     disableDownload?: boolean;
+    recording?: { id?: string; meetingId?: string };
   };
   if (r.disableDownload) throw new Error("この録画は取得が禁止に設定されています（Zoom の設定を確認してください）");
   if (!r.mp4Url) throw new Error("Zoom が動画の場所を返しません");
@@ -338,15 +384,114 @@ async function readZoom(share: string): Promise<ZoomInfo> {
     else await v.res.body?.cancel();
   }
 
+  const recId = r.recording?.id;
+  const meetingUuid = r.recording?.meetingId;
+  if (!recId) throw new Error("Zoom が録画そのものの番号を返しません");
+  if (!meetingUuid) throw new Error("Zoom が会議の番号を返しません");
+
   return {
     jar,
     pid,
+    recId,
+    meetingUuid,
     playUrl,
     mp4Url: r.mp4Url,
     transcript,
     topic: r.meet?.topic ?? "",
     startedAt: r.fileStartTime ?? Date.now(),
     durationSec: r.duration ?? 0,
+  };
+}
+
+/* ================================================================== */
+/* Zoom 本体の口（分かれているかを数える）                             */
+/* ================================================================== */
+
+/**
+ * Zoom の鍵を1本取る。有効なのは1時間だけで、作り直す仕組みは無い（毎回取り直す）。
+ */
+async function zoomToken(env: Env): Promise<string> {
+  const missing = missingZoom(env);
+  if (missing.length > 0) {
+    throw new Error(`Zoom 本体の口の設定が足りません（${missing.join(", ")}）。Cloudflare の Secret に入れてください`);
+  }
+
+  const basic = btoa(`${env.ZOOM_CLIENT_ID}:${env.ZOOM_CLIENT_SECRET}`);
+  const res = await fetch(ZOOM_TOKEN_URL, {
+    method: "POST",
+    headers: {
+      authorization: `Basic ${basic}`,
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "account_credentials",
+      account_id: env.ZOOM_ACCOUNT_ID as string,
+    }),
+  });
+  const b = (await res.json()) as { access_token?: string; error?: string; reason?: string };
+  if (!res.ok || !b.access_token) {
+    throw new Error(`Zoom の鍵が取れません（${res.status}／${b.reason ?? b.error ?? "理由なし"}）`);
+  }
+  return b.access_token;
+}
+
+/**
+ * 会議の番号を住所に埋め込める形にする。
+ * Zoom の決まりで、番号が / で始まるか // を含むときだけ二重に変換する。
+ */
+function uuidPath(uuid: string): string {
+  const once = encodeURIComponent(uuid);
+  return uuid.startsWith("/") || uuid.includes("//") ? encodeURIComponent(once) : once;
+}
+
+interface ZoomFile {
+  id?: string;
+  file_type?: string;
+  file_extension?: string;
+  recording_start?: string;
+  recording_end?: string;
+  recording_type?: string;
+  status?: string;
+  file_size?: number;
+}
+
+interface Segments {
+  /** 本体が何本に分かれているか */
+  count: number;
+  /** 1本ずつの始まりの時刻（Zoom が返した文字列のまま） */
+  starts: string[];
+  /** 動画以外も含めた、Zoom が返したファイルの総数 */
+  files: number;
+}
+
+/**
+ * 会議ひとつぶんの録画を Zoom 本体に聞いて、本体が何本あるかを数える。
+ *
+ * 数え方の注意：返ってくるファイルには、音声だけ・チャット・文字起こしも混ざっている。
+ * さらに1つの本体に対して画面付きと参加者一覧の2つの動画が作られる設定もあるため、
+ * 動画の本数をそのまま数えると分かれていないものまで2本に見える。
+ * よって「動画の始まりの時刻が何種類あるか」で数える。
+ */
+async function zoomSegments(env: Env, meetingUuid: string): Promise<Segments> {
+  const token = await zoomToken(env);
+  const res = await fetch(`${ZOOM_API}/meetings/${uuidPath(meetingUuid)}/recordings`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  const raw = await res.text();
+  if (!res.ok) {
+    throw new Error(`Zoom 本体が録画の一覧を返しません（${res.status}／${raw.slice(0, 300)}）`);
+  }
+
+  const body = JSON.parse(raw) as { recording_files?: ZoomFile[] };
+  const all = body.recording_files ?? [];
+  const videos = all.filter((f) => (f.file_type ?? "").toUpperCase() === "MP4");
+  const starts = [...new Set(videos.map((f) => f.recording_start ?? "").filter(Boolean))].sort();
+
+  return {
+    // 始まりの時刻が取れないときは、動画の本数をそのまま使う（数え落としを作らない）
+    count: starts.length > 0 ? starts.length : videos.length,
+    starts,
+    files: all.length,
   };
 }
 
@@ -732,8 +877,23 @@ async function processRow(
     row[COL.date] = when.date;
     out(`  収録日 ${when.date} ／ 長さ ${Math.round(z.durationSec / 60)} 分`);
 
+    /**
+     * 分かれていないかを、何かを上げる前に確かめる（終わりの条件4）。
+     * 共有リンクの返りは分かれていても1本目しか返さず、合図も出さない。
+     * ここで止めないと、セミナーが黙って欠けたまま「完了」になる。
+     * 数えられなかったときも通さない。通してしまうと、気づけない状態に戻るため。
+     */
+    const seg = await zoomSegments(env, z.meetingUuid);
+    if (seg.count >= 2) {
+      throw new Error(
+        `録画が ${seg.count} 本に分かれています。行を ${seg.count} 本に分けて、` +
+          `Zoom の録画の画面からそれぞれの共有リンクを貼り直してください`,
+      );
+    }
+    out(`  分かれていないことを確認した（本体 ${seg.count} 本）`);
+
     // 同じ録画がすでに上がっていないか
-    let job = await loadJob(env, z.pid);
+    let job = await loadJob(env, z.recId);
     if (job?.youtubeUrl && job.rowNo !== rowNo) {
       row[COL.drive] = job.driveFolderUrl ?? "";
       row[COL.youtube] = job.youtubeUrl;
@@ -751,7 +911,7 @@ async function processRow(
     out(`  動画の大きさ ${mb(size)} MB`);
 
     if (!job) {
-      job = { pid: z.pid, share: row[COL.share].trim(), rowNo, title, date: when.date, size, updatedAt: "" };
+      job = { recId: z.recId, share: row[COL.share].trim(), rowNo, title, date: when.date, size, updatedAt: "" };
     } else {
       job.rowNo = rowNo;
       job.title = title;
@@ -1157,12 +1317,58 @@ async function oauthStatus(env: Env): Promise<Response> {
     lines.push("");
   }
 
+  lines.push("■ Zoom 本体の口（分かれている録画をエラーにするために使う）");
+  const zm = missingZoom(env);
+  lines.push(`    設定の3つ　${zm.length === 0 ? "そろっている" : "足りない：" + zm.join(", ")}`);
+  if (zm.length === 0) {
+    try {
+      await zoomToken(env);
+      lines.push("    いま使えるか　使える");
+    } catch (e) {
+      lines.push(`    いま使えるか　使えない：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  lines.push("");
+
   const sid = await sheetId(env);
   lines.push("■ 管理用シート");
   lines.push(sid ? `    https://docs.google.com/spreadsheets/d/${sid}/edit` : "    まだ無い（/setup/sheet で作る）");
   lines.push("");
   lines.push("この画面に鍵そのものは表示しません。");
   return text(lines.join("\n"));
+}
+
+/**
+ * 共有リンクを1本渡すと、本体が何本あるかだけを数えて返す。
+ * 何も上げないし、シートにも触らない。分かれているかの確認だけに使う。
+ */
+async function zoomCheck(request: Request, env: Env): Promise<Response> {
+  const share = new URL(request.url).searchParams.get("share");
+  if (!share) {
+    return text("使い方：/zoom/check?share=Zoomの共有リンク\n\n何も上げません。本体が何本あるかを数えるだけです。", 400);
+  }
+
+  try {
+    const z = await readZoom(share);
+    const seg = await zoomSegments(env, z.meetingUuid);
+    const lines = [
+      "--- 分かれているかの確認 ---",
+      "",
+      `本体の数　　　　${seg.count} 本`,
+      `判定　　　　　　${seg.count >= 2 ? `分かれている（この共有リンクは通しません）` : "分かれていない（通せます）"}`,
+      "",
+      `題名　　　　　　${z.topic || "（なし）"}`,
+      `1本目の長さ　　${Math.round(z.durationSec / 60)} 分（${z.durationSec} 秒）`,
+      `録画の番号　　　${z.recId}`,
+      `Zoom が返した数　${seg.files} 個（動画のほか音声・チャット・文字起こしを含む）`,
+      "",
+      "1本ずつの始まり",
+      ...(seg.starts.length ? seg.starts.map((s, i) => `    ${i + 1} 本目　${s}`) : ["    （時刻が取れませんでした）"]),
+    ];
+    return text(lines.join("\n"));
+  } catch (e) {
+    return text(`数えられませんでした：${e instanceof Error ? e.message : String(e)}`, 500);
+  }
 }
 
 /* ================================================================== */
@@ -1204,8 +1410,12 @@ export default {
             "  /run           シートの未処理の行を通す",
             "  /oauth/status  許可とシートの状態を見る",
             "  /oauth/start   許可を通す（2本）",
+            "  /zoom/check    共有リンクが分かれていないかを数える（何も上げない）",
           ].join("\n"),
         );
+
+      case "/zoom/check":
+        return zoomCheck(request, env);
 
       case "/oauth/start":
         return oauthStart(request, env);
