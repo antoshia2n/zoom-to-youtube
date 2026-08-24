@@ -1,5 +1,5 @@
 /**
- * zoom-to-youtube / 第7版（2026-08-23 開発部・段階 C）
+ * zoom-to-youtube / 第8版（2026-08-24 開発部・段階 C）
  *
  * 版の履歴の注意：第6版（文字起こしの読める版）では、この見出しが第5版のまま
  * 残っていた。版を上げるときは必ずこの行も直すこと。
@@ -1396,6 +1396,105 @@ function streamed(work: (out: (s: string) => void) => Promise<void>): Response {
   });
 }
 
+/* ================================================================== */
+/* YouTube 一覧（数えるだけ・何も上げない・何も消さない）              */
+/* ================================================================== */
+
+type YtItem = { title: string; publishedAt: string; privacy: string; id: string };
+
+/**
+ * ブランドアカウントのチャンネルに入っている動画を全件数え、
+ * 公開の別（公開・限定公開・非公開）ごとの本数と、限定公開の一覧を返す。
+ * 読み取りの許可（youtube.readonly）だけを使う。上げる・消すは一切しない。
+ */
+async function youtubeList(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const want = (url.searchParams.get("privacy") ?? "unlisted").toLowerCase();
+
+  const yt = await accessToken(env, "youtube");
+  if (!yt.ok) return text(`できません：${yt.why}`, 400);
+
+  const ch = await gJson<{
+    items?: { id?: string; snippet?: { title?: string }; contentDetails?: { relatedPlaylists?: { uploads?: string } } }[];
+  }>(yt.token, "https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails&mine=true");
+
+  const channel = ch.items?.[0];
+  const uploads = channel?.contentDetails?.relatedPlaylists?.uploads;
+  if (!uploads) return text("このチャンネルの入れ物が見つかりませんでした。", 400);
+
+  const ids: string[] = [];
+  let pageToken = "";
+  for (let guard = 0; guard < 100; guard++) {
+    const page = await gJson<{
+      items?: { contentDetails?: { videoId?: string } }[];
+      nextPageToken?: string;
+    }>(
+      yt.token,
+      `https://www.googleapis.com/youtube/v3/playlistItems?part=contentDetails&maxResults=50&playlistId=${encodeURIComponent(uploads)}` +
+        (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""),
+    );
+    for (const it of page.items ?? []) {
+      const v = it.contentDetails?.videoId;
+      if (v) ids.push(v);
+    }
+    if (!page.nextPageToken) break;
+    pageToken = page.nextPageToken;
+  }
+
+  const all: YtItem[] = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    const chunk = ids.slice(i, i + 50);
+    const got = await gJson<{
+      items?: { id?: string; snippet?: { title?: string; publishedAt?: string }; status?: { privacyStatus?: string } }[];
+    }>(yt.token, `https://www.googleapis.com/youtube/v3/videos?part=snippet,status&id=${chunk.join(",")}`);
+    for (const v of got.items ?? []) {
+      all.push({
+        id: v.id ?? "",
+        title: v.snippet?.title ?? "（題名なし）",
+        publishedAt: (v.snippet?.publishedAt ?? "").slice(0, 10),
+        privacy: v.status?.privacyStatus ?? "不明",
+      });
+    }
+  }
+
+  const label: Record<string, string> = { public: "公開", unlisted: "限定公開", private: "非公開" };
+  const tally = new Map<string, number>();
+  for (const v of all) tally.set(v.privacy, (tally.get(v.privacy) ?? 0) + 1);
+
+  const lines: string[] = [];
+  lines.push("--- YouTube の本数 ---");
+  lines.push("");
+  lines.push(`チャンネル　　${channel?.snippet?.title ?? "（不明）"}`);
+  lines.push(`入れ物に入っている全件　　${all.length} 本`);
+  lines.push("");
+  lines.push("公開の別ごとの本数");
+  for (const key of ["public", "unlisted", "private"]) {
+    lines.push(`  ${label[key]}　　${tally.get(key) ?? 0} 本`);
+  }
+  for (const [key, n] of tally) {
+    if (!label[key]) lines.push(`  ${key}　　${n} 本`);
+  }
+  lines.push("");
+  lines.push(`--- ${label[want] ?? want} の一覧 ---`);
+  lines.push("");
+
+  const picked = all.filter((v) => v.privacy === want);
+  if (picked.length === 0) {
+    lines.push("0 本");
+  } else {
+    picked.sort((a, b) => (a.publishedAt < b.publishedAt ? -1 : a.publishedAt > b.publishedAt ? 1 : 0));
+    for (const v of picked) {
+      lines.push(`${v.publishedAt}\t${v.title}\thttps://www.youtube.com/watch?v=${v.id}`);
+    }
+  }
+  lines.push("");
+  lines.push("公開の別を変えるときは ?privacy=public / unlisted / private を付けます。");
+  lines.push("この口は数えるだけです。上げる・消す・書き換えるは行いません。");
+
+  return text(lines.join("\n"));
+}
+
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -1411,11 +1510,15 @@ export default {
             "  /oauth/status  許可とシートの状態を見る",
             "  /oauth/start   許可を通す（2本）",
             "  /zoom/check    共有リンクが分かれていないかを数える（何も上げない）",
+            "  /youtube/list  チャンネルの本数を公開の別ごとに数える（何も上げない）",
           ].join("\n"),
         );
 
       case "/zoom/check":
         return zoomCheck(request, env);
+
+      case "/youtube/list":
+        return youtubeList(request, env);
 
       case "/oauth/start":
         return oauthStart(request, env);
