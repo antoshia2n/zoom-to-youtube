@@ -1,5 +1,5 @@
 /**
- * zoom-to-youtube / 第10版（2026-09-08 開発部・管理シートへ行を足す）
+ * zoom-to-youtube / 第11版（2026-09-08 開発部・空き行の見つけ方を直す）
  *
  * 第9版で足したこと
  *   /privacy と /terms の 2 つを足した。中身は 1 画面ぶんの文章だけで、
@@ -1122,7 +1122,8 @@ async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<vo
     const managed = await syncManageSheet(env, ws.token, sid);
     out(
       `管理シート：${managed.made ? "作成" : "既存"}／追加 ${managed.added} 件／更新 ${managed.updated} 件／` +
-        `変更なし ${managed.unchanged} 件／別の年 ${managed.skippedYear} 件`,
+        `変更なし ${managed.unchanged} 件／別の年 ${managed.skippedYear} 件／` +
+        `入れ先を決められなかった ${managed.undecidableDestination} 件／空きが無くて入れられなかった ${managed.noSpace} 件`,
     );
   } catch (e) {
     out(`管理シートへの反映に失敗：${e instanceof Error ? e.message : String(e)}`);

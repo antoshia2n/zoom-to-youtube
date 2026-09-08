@@ -1,5 +1,5 @@
 const MANAGE_YEAR = "2026";
-const MANAGE_VERSION = "第10版（2026-09-08 開発部・管理シートへ行を足す）";
+const MANAGE_VERSION = "第11版（2026-09-08 開発部・空き行の見つけ方を直す）";
 const MANAGE_HEADERS = [
   "投稿予定日",
   "ステータス",
@@ -47,6 +47,8 @@ export interface ManageSyncResult {
   updated: number;
   unchanged: number;
   skippedYear: number;
+  undecidableDestination: number;
+  noSpace: number;
 }
 
 function manageKey(year = MANAGE_YEAR): string {
@@ -273,7 +275,8 @@ export async function syncManageSheet(
   const sheet = await ensureManageSheet(env, token);
   if (!sheet.made) {
     const properties = await sheetMetadata(token, sheet.id);
-    await setUpTabs(token, sheet.id, properties);
+    const actualTabs = new Set(properties.map((property) => property.title ?? ""));
+    if (tabs().some((tab) => !actualTabs.has(tab))) await setUpTabs(token, sheet.id, properties);
   }
 
   const sourceRows = await readSourceRows(token, sourceSheetId);
@@ -284,13 +287,16 @@ export async function syncManageSheet(
   let updated = 0;
   let unchanged = 0;
   let skippedYear = 0;
+  let undecidableDestination = 0;
+  let noSpace = 0;
 
   for (const source of sourceRows) {
     const processingId = (source[0] ?? "").trim();
     if (!processingId) continue;
     const dest = destination(source);
     if (!dest) {
-      throw new Error(`管理シート：処理ID ${processingId} の収録日と最終更新日時から入れ先を決められません`);
+      undecidableDestination += 1;
+      continue;
     }
     if (dest.year !== MANAGE_YEAR || !tabs().includes(dest.tab)) {
       skippedYear += 1;
@@ -324,8 +330,12 @@ export async function syncManageSheet(
 
     const tabRows = rowsByTab.get(dest.tab) ?? [];
     let rowNo = 2;
-    while (rowNo <= 500 && (tabRows[rowNo - 2] ?? []).some((value) => value !== "")) rowNo += 1;
-    if (rowNo > 500) throw new Error(`管理シート：${dest.tab} の 2 行目から 500 行目に空きがありません`);
+    const occupiedColumns = [0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14];
+    while (rowNo <= 500 && occupiedColumns.some((column) => (tabRows[rowNo - 2]?.[column] ?? "") !== "")) rowNo += 1;
+    if (rowNo > 500) {
+      noSpace += 1;
+      continue;
+    }
 
     writes.push(
       { range: `${dest.tab}!G${rowNo}:H${rowNo}`, values: [[wanted.zoom, wanted.youtube]] },
@@ -344,7 +354,16 @@ export async function syncManageSheet(
   }
 
   await writeCells(token, sheet.id, writes);
-  return { url: sheet.url, made: sheet.made, added, updated, unchanged, skippedYear };
+  return {
+    url: sheet.url,
+    made: sheet.made,
+    added,
+    updated,
+    unchanged,
+    skippedYear,
+    undecidableDestination,
+    noSpace,
+  };
 }
 
 export async function manageStatus(env: ManageEnv, token: string, sourceSheetId: string): Promise<string> {
