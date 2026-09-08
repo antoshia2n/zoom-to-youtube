@@ -1,5 +1,5 @@
 /**
- * zoom-to-youtube / 第9版（2026-08-28 開発部・段階 C）
+ * zoom-to-youtube / 第10版（2026-09-08 開発部・管理シートへ行を足す）
  *
  * 第9版で足したこと
  *   /privacy と /terms の 2 つを足した。中身は 1 画面ぶんの文章だけで、
@@ -46,6 +46,8 @@
  *   分かれた録画を全部上げること（終わりの条件5）は作っていない。4 でエラーになるので、
  *   Naoki が行を分けて貼り直す。
  */
+
+import { manageStatus, syncManageSheet } from "./manage";
 
 interface Env {
   STORE: R2Bucket;
@@ -1116,6 +1118,15 @@ async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<vo
     await processRow(env, ws.token, sid, t.no, t.row, out, beat);
     out("");
   }
+  try {
+    const managed = await syncManageSheet(env, ws.token, sid);
+    out(
+      `管理シート：${managed.made ? "作成" : "既存"}／追加 ${managed.added} 件／更新 ${managed.updated} 件／` +
+        `変更なし ${managed.unchanged} 件／別の年 ${managed.skippedYear} 件`,
+    );
+  } catch (e) {
+    out(`管理シートへの反映に失敗：${e instanceof Error ? e.message : String(e)}`);
+  }
   out("ここまでです。");
 }
 
@@ -1586,6 +1597,7 @@ export default {
             "",
             "  /setup/sheet   管理用シートを作る（すでにあれば作らない）",
             "  /run           シートの未処理の行を通す",
+            "  /manage/status 管理シートの状態を見る（何も作らない・何も書かない）",
             "  /oauth/status  許可とシートの状態を見る",
             "  /oauth/start   許可を通す（2本）",
             "  /zoom/check    共有リンクが分かれていないかを数える（何も上げない）",
@@ -1613,6 +1625,18 @@ export default {
         return oauthCallback(request, env);
       case "/oauth/status":
         return oauthStatus(env);
+
+      case "/manage/status": {
+        const ws = await accessToken(env, "workspace");
+        if (!ws.ok) return text(`できません：${ws.why}`, 400);
+        const sid = await sheetId(env);
+        if (!sid) return text("受け付けの台帳がまだありません。", 400);
+        try {
+          return text(await manageStatus(env, ws.token, sid));
+        } catch (e) {
+          return text(`管理シートの状態を読めませんでした：${e instanceof Error ? e.message : String(e)}`, 500);
+        }
+      }
 
       case "/setup/sheet": {
         const ws = await accessToken(env, "workspace");
