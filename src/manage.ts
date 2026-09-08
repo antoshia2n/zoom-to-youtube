@@ -1,5 +1,5 @@
 const MANAGE_YEAR = "2026";
-const MANAGE_VERSION = "第11版（2026-09-08 開発部・空き行の見つけ方を直す）";
+const MANAGE_VERSION = "第12版（2026-09-08 開発部・コンテンツくんと繋ぐ）";
 const MANAGE_HEADERS = [
   "投稿予定日",
   "ステータス",
@@ -17,11 +17,15 @@ const MANAGE_HEADERS = [
   "録画の状態",
   "処理ID",
 ] as const;
-const STATUS_VALUES = ["日時未定", "下書き", "予約済み", "公開済み"];
+const STATUS_VALUES = ["下書き", "レビュー待ち", "日時未定", "予約済み", "公開済"];
 const PLATFORM_VALUES = ["X記事", "Xポスト", "note記事", "セミナー", "有料教材", "YouTube"];
 
 export interface ManageEnv {
   STORE: R2Bucket;
+  CONTENT_OS_API_BASE?: string;
+  CONTENT_OS_INTERNAL_SECRET?: string;
+  CONTENT_OS_USER_ID?: string;
+  CONTENT_OS_ACCOUNT_ID?: string;
 }
 
 interface ManageConfig {
@@ -49,6 +53,20 @@ export interface ManageSyncResult {
   skippedYear: number;
   undecidableDestination: number;
   noSpace: number;
+}
+
+export interface ContentOsSyncResult {
+  missingSettings: boolean;
+  created: number;
+  statusUpdated: number;
+  unchanged: number;
+  createFailed: number;
+  postNotFound: number;
+}
+
+interface ContentPost {
+  id: string;
+  status: string;
 }
 
 function manageKey(year = MANAGE_YEAR): string {
@@ -165,6 +183,14 @@ async function setUpTabs(token: string, id: string, properties: SheetProperties[
   });
 }
 
+export async function reapplyFormats(env: ManageEnv, token: string): Promise<{ url: string; tabs: number }> {
+  const config = await loadConfig(env);
+  if (!config) throw new Error("管理シート：ファイルはまだありません");
+  const properties = await sheetMetadata(token, config.id);
+  await setUpTabs(token, config.id, properties);
+  return { url: `https://docs.google.com/spreadsheets/d/${config.id}/edit`, tabs: properties.length };
+}
+
 async function ensureManageSheet(
   env: ManageEnv,
   token: string,
@@ -265,6 +291,155 @@ async function writeCells(
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ valueInputOption: "RAW", data: cells }),
   });
+}
+
+function contentStatus(status: string): string | null {
+  const statuses: Record<string, string> = {
+    draft: "下書き",
+    review: "レビュー待ち",
+    waiting: "日時未定",
+    reserved: "予約済み",
+    published: "公開済",
+  };
+  return statuses[status] ?? null;
+}
+
+function contentOsSettings(env: ManageEnv): {
+  base: string;
+  secret: string;
+  userId: string;
+  accountId: string;
+} | null {
+  const base = env.CONTENT_OS_API_BASE?.trim() ?? "";
+  const secret = env.CONTENT_OS_INTERNAL_SECRET?.trim() ?? "";
+  const userId = env.CONTENT_OS_USER_ID?.trim() ?? "";
+  const accountId = env.CONTENT_OS_ACCOUNT_ID?.trim() ?? "";
+  if (!base || !secret || !userId || !accountId) return null;
+  return { base: base.replace(/\/+$/, ""), secret, userId, accountId };
+}
+
+async function contentOsJson<T>(
+  url: string,
+  secret: string,
+  body: Record<string, string>,
+): Promise<T> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const raw = await res.text();
+  if (!res.ok) throw new Error(`コンテンツくんからの返事 ${res.status}：${raw.slice(0, 600)}`);
+  return raw ? (JSON.parse(raw) as T) : ({} as T);
+}
+
+function postsFrom(body: unknown): ContentPost[] {
+  const candidates: unknown[] = [body];
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    const record = body as Record<string, unknown>;
+    candidates.push(record.posts, record.items, record.data);
+    if (record.data && typeof record.data === "object" && !Array.isArray(record.data)) {
+      const data = record.data as Record<string, unknown>;
+      candidates.push(data.posts, data.items);
+    }
+  }
+  const list = candidates.find(Array.isArray) as unknown[] | undefined;
+  if (!list) throw new Error("コンテンツくん：投稿の一覧が返りませんでした");
+  return list.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    if (record.id === undefined || typeof record.status !== "string") return [];
+    return [{ id: String(record.id), status: record.status }];
+  });
+}
+
+export async function syncContentOs(env: ManageEnv, token: string): Promise<ContentOsSyncResult> {
+  const settings = contentOsSettings(env);
+  const result: ContentOsSyncResult = {
+    missingSettings: settings === null,
+    created: 0,
+    statusUpdated: 0,
+    unchanged: 0,
+    createFailed: 0,
+    postNotFound: 0,
+  };
+  if (!settings) return result;
+
+  const config = await loadConfig(env);
+  if (!config) throw new Error("管理シート：ファイルはまだありません");
+  const rowsByTab = await readRowsByTab(token, config.id);
+  const writes: { range: string; values: string[][] }[] = [];
+  const statusTargets: { tab: string; rowNo: number; row: string[]; postId: string | null }[] = [];
+
+  for (const [tab, rows] of rowsByTab) {
+    for (let index = 0; index < rows.length; index++) {
+      const row = rows[index];
+      const rowNo = index + 2;
+      const date = (row[0] ?? "").trim();
+      const platform = (row[2] ?? "").trim();
+      const title = (row[4] ?? "").trim();
+      const article = (row[8] ?? "").trim();
+      if (!date || !platform || !title) continue;
+
+      if (article) {
+        const marker = article.match(/#post-([^#/?]+)$/);
+        statusTargets.push({ tab, rowNo, row, postId: marker?.[1] ?? null });
+        continue;
+      }
+
+      try {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date.slice(0, 10))) throw new Error("投稿予定日が日付ではありません");
+        const made = await contentOsJson<{
+          ok?: boolean;
+          slot?: { id?: string | number; status?: string };
+        }>(`${settings.base}/api/internal/create-slot`, settings.secret, {
+          user_id: settings.userId,
+          datetime: `${date.slice(0, 10)}T09:00`,
+          title,
+          platform: "x",
+          post_type: platform,
+          account_id: settings.accountId,
+        });
+        if (!made.ok || made.slot?.id === undefined) throw new Error("枠の番号が返りませんでした");
+        const articleUrl = `${settings.base}/?account=${encodeURIComponent(settings.accountId)}#post-${made.slot.id}`;
+        writes.push({ range: `${tab}!I${rowNo}`, values: [[articleUrl]] });
+        const status = contentStatus(made.slot.status ?? "");
+        if (status) {
+          writes.push({ range: `${tab}!B${rowNo}`, values: [[status]] });
+          result.statusUpdated += 1;
+        }
+        result.created += 1;
+      } catch {
+        result.createFailed += 1;
+      }
+    }
+  }
+
+  if (statusTargets.length > 0) {
+    const listed = await contentOsJson<unknown>(
+      `${settings.base}/api/internal/list-posts`,
+      settings.secret,
+      { user_id: settings.userId },
+    );
+    const posts = new Map(postsFrom(listed).map((post) => [post.id, post]));
+    for (const target of statusTargets) {
+      const post = target.postId ? posts.get(target.postId) : undefined;
+      if (!post) {
+        result.postNotFound += 1;
+        continue;
+      }
+      const status = contentStatus(post.status);
+      if (!status || (target.row[1] ?? "") === status) {
+        result.unchanged += 1;
+        continue;
+      }
+      writes.push({ range: `${target.tab}!B${target.rowNo}`, values: [[status]] });
+      result.statusUpdated += 1;
+    }
+  }
+
+  await writeCells(token, config.id, writes);
+  return result;
 }
 
 export async function syncManageSheet(
