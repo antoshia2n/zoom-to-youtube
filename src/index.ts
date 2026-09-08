@@ -1,5 +1,5 @@
 /**
- * zoom-to-youtube / 第11版（2026-09-08 開発部・空き行の見つけ方を直す）
+ * zoom-to-youtube / 第12版（2026-09-08 開発部・コンテンツくんと繋ぐ）
  *
  * 第9版で足したこと
  *   /privacy と /terms の 2 つを足した。中身は 1 画面ぶんの文章だけで、
@@ -47,7 +47,7 @@
  *   Naoki が行を分けて貼り直す。
  */
 
-import { manageStatus, syncManageSheet } from "./manage";
+import { manageStatus, reapplyFormats, syncContentOs, syncManageSheet } from "./manage";
 
 interface Env {
   STORE: R2Bucket;
@@ -58,6 +58,10 @@ interface Env {
   ZOOM_ACCOUNT_ID?: string;
   ZOOM_CLIENT_ID?: string;
   ZOOM_CLIENT_SECRET?: string;
+  CONTENT_OS_API_BASE?: string;
+  CONTENT_OS_INTERNAL_SECRET?: string;
+  CONTENT_OS_USER_ID?: string;
+  CONTENT_OS_ACCOUNT_ID?: string;
 }
 
 const UA =
@@ -1128,6 +1132,20 @@ async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<vo
   } catch (e) {
     out(`管理シートへの反映に失敗：${e instanceof Error ? e.message : String(e)}`);
   }
+  try {
+    const content = await syncContentOs(env, ws.token);
+    if (content.missingSettings) {
+      out("コンテンツくんの設定値が足りないので寄せませんでした");
+    } else {
+      out(
+        `コンテンツくん：作った ${content.created} 件／状態を写した ${content.statusUpdated} 件／` +
+          `変わらなかった ${content.unchanged} 件／枠を作れなかった ${content.createFailed} 件／` +
+          `投稿が見つからなかった ${content.postNotFound} 件`,
+      );
+    }
+  } catch (e) {
+    out(`コンテンツくんへの反映に失敗：${e instanceof Error ? e.message : String(e)}`);
+  }
   out("ここまでです。");
 }
 
@@ -1636,6 +1654,17 @@ export default {
           return text(await manageStatus(env, ws.token, sid));
         } catch (e) {
           return text(`管理シートの状態を読めませんでした：${e instanceof Error ? e.message : String(e)}`, 500);
+        }
+      }
+
+      case "/manage/reapply": {
+        const ws = await accessToken(env, "workspace");
+        if (!ws.ok) return text(`できません：${ws.why}`, 400);
+        try {
+          const result = await reapplyFormats(env, ws.token);
+          return text(`見出しと入力規則を当て直しました。\n\nタブの数：${result.tabs}\n${result.url}`);
+        } catch (e) {
+          return text(`当て直せませんでした：${e instanceof Error ? e.message : String(e)}`, 500);
         }
       }
 
