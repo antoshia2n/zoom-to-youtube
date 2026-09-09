@@ -1,5 +1,5 @@
 const MANAGE_YEAR = "2026";
-const MANAGE_VERSION = "第13版（2026-09-09 開発部・学ぶくんへ入れる）";
+const MANAGE_VERSION = "第14版（2026-09-10 開発部・置き場から置き場を呼べるようにする）";
 const MANAGE_HEADERS = [
   "投稿予定日",
   "ステータス",

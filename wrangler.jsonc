@@ -3,7 +3,9 @@
   "name": "zoom-to-youtube",
   "main": "src/index.ts",
   "compatibility_date": "2026-04-01",
-  "compatibility_flags": ["nodejs_compat"],
+  // 2026-09-10 追加：同じ workers.dev の下にある shia2n-mcp の口（/manabu/put-seminar）を
+  // 呼んだときに Cloudflare の 1042 で拒まれたため。受け側の shia2n-mcp には既に同じ旗がある。
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "r2_buckets": [
     {
       "binding": "STORE",
