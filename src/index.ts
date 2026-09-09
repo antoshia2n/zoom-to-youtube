@@ -47,7 +47,7 @@
  *   Naoki が行を分けて貼り直す。
  */
 
-import { manageStatus, reapplyFormats, syncContentOs, syncManageSheet } from "./manage";
+import { manageStatus, reapplyFormats, syncContentOs, syncManabu, syncManageSheet } from "./manage";
 
 interface Env {
   STORE: R2Bucket;
@@ -62,6 +62,8 @@ interface Env {
   CONTENT_OS_INTERNAL_SECRET?: string;
   CONTENT_OS_USER_ID?: string;
   CONTENT_OS_ACCOUNT_ID?: string;
+  MANABU_PUT_SEMINAR_URL?: string;
+  MANABU_PUT_SEMINAR_SECRET?: string;
 }
 
 const UA =
@@ -1145,6 +1147,16 @@ async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<vo
     }
   } catch (e) {
     out(`コンテンツくんへの反映に失敗：${e instanceof Error ? e.message : String(e)}`);
+  }
+  try {
+    const manabu = await syncManabu(env, ws.token, sid);
+    if (manabu.missingSettings) {
+      out("学ぶくんの設定値が足りないので入れませんでした");
+    } else {
+      out(`学ぶくん：入れた ${manabu.put} 件／失敗 ${manabu.failed} 件／動画の住所を待っている ${manabu.waitingVideo} 件`);
+    }
+  } catch (e) {
+    out(`学ぶくんへの反映に失敗：${e instanceof Error ? e.message : String(e)}`);
   }
   out("ここまでです。");
 }

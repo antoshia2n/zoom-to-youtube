@@ -1,5 +1,5 @@
 const MANAGE_YEAR = "2026";
-const MANAGE_VERSION = "第12版（2026-09-08 開発部・コンテンツくんと繋ぐ）";
+const MANAGE_VERSION = "第13版（2026-09-09 開発部・学ぶくんへ入れる）";
 const MANAGE_HEADERS = [
   "投稿予定日",
   "ステータス",
@@ -16,6 +16,7 @@ const MANAGE_HEADERS = [
   "メモ",
   "録画の状態",
   "処理ID",
+  "学ぶくん",
 ] as const;
 const STATUS_VALUES = ["下書き", "レビュー待ち", "日時未定", "予約済み", "公開済"];
 const PLATFORM_VALUES = ["X記事", "Xポスト", "note記事", "セミナー", "有料教材", "YouTube"];
@@ -26,6 +27,8 @@ export interface ManageEnv {
   CONTENT_OS_INTERNAL_SECRET?: string;
   CONTENT_OS_USER_ID?: string;
   CONTENT_OS_ACCOUNT_ID?: string;
+  MANABU_PUT_SEMINAR_URL?: string;
+  MANABU_PUT_SEMINAR_SECRET?: string;
 }
 
 interface ManageConfig {
@@ -62,6 +65,13 @@ export interface ContentOsSyncResult {
   unchanged: number;
   createFailed: number;
   postNotFound: number;
+}
+
+export interface ManabuSyncResult {
+  missingSettings: boolean;
+  put: number;
+  failed: number;
+  waitingVideo: number;
 }
 
 interface ContentPost {
@@ -178,7 +188,7 @@ async function setUpTabs(token: string, id: string, properties: SheetProperties[
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       valueInputOption: "RAW",
-      data: tabs().map((tab) => ({ range: `${tab}!A1:O1`, values: [[...MANAGE_HEADERS]] })),
+      data: tabs().map((tab) => ({ range: `${tab}!A1:P1`, values: [[...MANAGE_HEADERS]] })),
     }),
   });
 }
@@ -236,7 +246,7 @@ async function readSourceRows(token: string, sourceSheetId: string): Promise<str
 }
 
 async function readManageRows(token: string, id: string): Promise<Map<string, SheetRow>> {
-  const ranges = tabs().map((tab) => `ranges=${encodeURIComponent(`${tab}!A2:O500`)}`).join("&");
+  const ranges = tabs().map((tab) => `ranges=${encodeURIComponent(`${tab}!A2:P500`)}`).join("&");
   const got = await googleJson<{ valueRanges?: { range?: string; values?: string[][] }[] }>(
     token,
     `https://sheets.googleapis.com/v4/spreadsheets/${id}/values:batchGet?majorDimension=ROWS&${ranges}`,
@@ -253,7 +263,7 @@ async function readManageRows(token: string, id: string): Promise<Map<string, Sh
 }
 
 async function readRowsByTab(token: string, id: string): Promise<Map<string, string[][]>> {
-  const ranges = tabs().map((tab) => `ranges=${encodeURIComponent(`${tab}!A2:O500`)}`).join("&");
+  const ranges = tabs().map((tab) => `ranges=${encodeURIComponent(`${tab}!A2:P500`)}`).join("&");
   const got = await googleJson<{ valueRanges?: { values?: string[][] }[] }>(
     token,
     `https://sheets.googleapis.com/v4/spreadsheets/${id}/values:batchGet?majorDimension=ROWS&${ranges}`,
@@ -442,6 +452,96 @@ export async function syncContentOs(env: ManageEnv, token: string): Promise<Cont
   return result;
 }
 
+function jstStamp(msUtc: number): string {
+  const d = new Date(msUtc + 9 * 60 * 60 * 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+}
+
+function manabuSettings(env: ManageEnv): { url: string; secret: string } | null {
+  const url = env.MANABU_PUT_SEMINAR_URL?.trim() ?? "";
+  const secret = env.MANABU_PUT_SEMINAR_SECRET?.trim() ?? "";
+  if (!url || !secret) return null;
+  return { url, secret };
+}
+
+/**
+ * 段 4：媒体がセミナーの行を、学ぶくんへ入れる口（/manabu/put-seminar）へ渡す。
+ * 門は「媒体がセミナー・タイトルが空でない・処理ID がある・学ぶくんの列（P）が空か失敗」。
+ * YouTube の住所がまだ無い行は待つ（失敗にしない）。
+ * 日付は処理ID で受け付けの台帳を引き、収録日を使う。
+ * 鍵は動画の住所なので、同じ行を何度通しても学ぶくんの側で 1 本にまとまる。
+ * 結果は P 列へ書く。済なら「済 日時 棚」、だめなら「失敗：理由」（次の実行が拾い直す）。
+ */
+export async function syncManabu(env: ManageEnv, token: string, sourceSheetId: string): Promise<ManabuSyncResult> {
+  const settings = manabuSettings(env);
+  const result: ManabuSyncResult = { missingSettings: settings === null, put: 0, failed: 0, waitingVideo: 0 };
+  if (!settings) return result;
+
+  const config = await loadConfig(env);
+  if (!config) throw new Error("管理シート：ファイルはまだありません");
+  const sourceRows = await readSourceRows(token, sourceSheetId);
+  const recordedById = new Map<string, string>();
+  for (const source of sourceRows) {
+    const processingId = (source[0] ?? "").trim();
+    if (processingId) recordedById.set(processingId, (source[3] ?? "").trim());
+  }
+  const rowsByTab = await readRowsByTab(token, config.id);
+  const writes: { range: string; values: string[][] }[] = [];
+
+  for (const [tab, rows] of rowsByTab) {
+    for (let index = 0; index < rows.length; index++) {
+      const row = rows[index];
+      const rowNo = index + 2;
+      const platform = (row[2] ?? "").trim();
+      const title = (row[4] ?? "").trim();
+      const processingId = (row[14] ?? "").trim();
+      const manabu = (row[15] ?? "").trim();
+      if (platform !== "セミナー" || !title || !processingId) continue;
+      if (manabu && !manabu.startsWith("失敗")) continue;
+
+      const youtube = (row[7] ?? "").trim();
+      if (!youtube) {
+        result.waitingVideo += 1;
+        continue;
+      }
+
+      let note: string;
+      try {
+        const recorded = (recordedById.get(processingId) ?? "").slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(recorded)) throw new Error("受け付けの台帳に収録日がありません");
+        const seminarRow: Record<string, string> = { date: recorded, title, video_url: youtube };
+        const theme = (row[3] ?? "").trim();
+        const whimsical = (row[5] ?? "").trim();
+        if (theme) seminarRow.summary = theme;
+        if (whimsical) seminarRow.mindmap_url = whimsical;
+        const res = await fetch(settings.url, {
+          method: "POST",
+          headers: { authorization: `Bearer ${settings.secret}`, "content-type": "application/json" },
+          body: JSON.stringify({ year: recorded.slice(0, 4), match_by: "video_url", rows: [seminarRow] }),
+        });
+        const raw = await res.text();
+        if (!res.ok) throw new Error(`学ぶくんの口からの返事 ${res.status}：${raw.slice(0, 300)}`);
+        const got = JSON.parse(raw) as {
+          ok?: boolean;
+          result?: { コース?: { title?: string }; 足した本数?: number; 書き換えた本数?: number };
+        };
+        if (!got.ok || !got.result) throw new Error(`学ぶくんの口が ok を返しませんでした：${raw.slice(0, 300)}`);
+        const how = (got.result.書き換えた本数 ?? 0) > 0 ? "書き換えた" : "足した";
+        note = `済 ${jstStamp(Date.now())} ${got.result.コース?.title ?? ""} ${how}`.trim();
+        result.put += 1;
+      } catch (e) {
+        note = `失敗：${e instanceof Error ? e.message : String(e)}`.slice(0, 500);
+        result.failed += 1;
+      }
+      writes.push({ range: `${tab}!P${rowNo}`, values: [[note]] });
+    }
+  }
+
+  await writeCells(token, config.id, writes);
+  return result;
+}
+
 export async function syncManageSheet(
   env: ManageEnv,
   token: string,
@@ -505,7 +605,7 @@ export async function syncManageSheet(
 
     const tabRows = rowsByTab.get(dest.tab) ?? [];
     let rowNo = 2;
-    const occupiedColumns = [0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14];
+    const occupiedColumns = [0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15];
     while (rowNo <= 500 && occupiedColumns.some((column) => (tabRows[rowNo - 2]?.[column] ?? "") !== "")) rowNo += 1;
     if (rowNo > 500) {
       noSpace += 1;
