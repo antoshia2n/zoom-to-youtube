@@ -1,5 +1,5 @@
 const MANAGE_YEAR = "2026";
-const MANAGE_VERSION = "第14版（2026-09-10 開発部・置き場から置き場を呼べるようにする）";
+const MANAGE_VERSION = "第15版（2026-09-10 開発部・同じ行かどうかの鍵を日付にする）";
 const MANAGE_HEADERS = [
   "投稿予定日",
   "ステータス",
@@ -518,7 +518,9 @@ export async function syncManabu(env: ManageEnv, token: string, sourceSheetId: s
         const res = await fetch(settings.url, {
           method: "POST",
           headers: { authorization: `Bearer ${settings.secret}`, "content-type": "application/json" },
-          body: JSON.stringify({ year: recorded.slice(0, 4), match_by: "video_url", rows: [seminarRow] }),
+          // 2026-09-10 直し：鍵を video_url から date へ。video_url は「同じ動画を指す行を書き換える」
+          // 鍵で、既存のセミナー 1 件を上書きした（控えから戻し済み）。
+          body: JSON.stringify({ year: recorded.slice(0, 4), match_by: "date", rows: [seminarRow] }),
         });
         const raw = await res.text();
         if (!res.ok) throw new Error(`学ぶくんの口からの返事 ${res.status}：${raw.slice(0, 300)}`);
