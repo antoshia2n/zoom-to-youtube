@@ -1,1715 +1,373 @@
-/**
- * zoom-to-youtube / ç¬¬12ç‰ˆï¼ˆ2026-09-08 é–‹ç™ºéƒ¨ãƒ»ã‚³ãƒ³ãƒ†ãƒ³ãƒ„ãã‚“ã¨ç¹‹ãï¼‰
- *
- * ç¬¬9ç‰ˆã§è¶³ã—ãŸã“ã¨
- *   /privacy ã¨ /terms ã® 2 ã¤ã‚’è¶³ã—ãŸã€‚ä¸­èº«ã¯ 1 ç”»é¢ã¶ã‚“ã®æ–‡ç« ã ã‘ã§ã€
- *   ä»•çµ„ã¿ã®å‹•ãã¯ 1 ã¤ã‚‚å¤‰ã‚ã£ã¦ã„ãªã„ã€‚
- *   ç†ç”±ï¼šGoogle ã®è¨±å¯ãŒ 7 æ—¥ã§åˆ‡ã‚Œã¦ã„ãŸã®ã¯ã€åŒæ„ç”»é¢ãŒã€Œãƒ†ã‚¹ãƒˆä¸­ã€ã®ã¾ã¾ã ã£ãŸãŸã‚
- *   ï¼ˆ2026-08-28 ã« Google ã®èª¬æ˜ã§ç¢ºèªï¼‰ã€‚ã€Œæœ¬ç•ªã€ã¸ç§»ã™ã«ã¯åŒæ„ç”»é¢ã®
- *   ãƒ›ãƒ¼ãƒ ãƒšãƒ¼ã‚¸ãƒ»ãƒ—ãƒ©ã‚¤ãƒã‚·ãƒ¼ ãƒãƒªã‚·ãƒ¼ãƒ»åˆ©ç”¨è¦ç´„ã® 3 ã¤ã®ä½æ‰€ãŒè¦ã‚Šã€
- *   ãã®ä½æ‰€ã¯æ‰¿èªæ¸ˆã¿ãƒ‰ãƒ¡ã‚¤ãƒ³ï¼ˆgameister1.workers.devï¼‰ã®ä¸‹ã§ãªã‘ã‚Œã°ãªã‚‰ãªã„ã€‚
- *   ç½®ãå ´ã‚’æ–°ã—ãä½œã‚‰ãšã€ã“ã® Worker ã« 2 ã¤è¶³ã™ã®ãŒã„ã¡ã°ã‚“ short ã„é“ã ã£ãŸã€‚
- *
- * ç‰ˆã®å±¥æ­´ã®æ³¨æ„ï¼šç¬¬6ç‰ˆï¼ˆæ–‡å­—èµ·ã“ã—ã®èª­ã‚ã‚‹ç‰ˆï¼‰ã§ã¯ã€ã“ã®è¦‹å‡ºã—ãŒç¬¬5ç‰ˆã®ã¾ã¾
- * æ®‹ã£ã¦ã„ãŸã€‚ç‰ˆã‚’ä¸Šã’ã‚‹ã¨ãã¯å¿…ãšã“ã®è¡Œã‚‚ç›´ã™ã“ã¨ã€‚
- *
- * ã§ãã‚‹ã“ã¨
- *   /setup/sheet   ç®¡ç†ç”¨ã‚¹ãƒ—ãƒ¬ãƒƒãƒ‰ã‚·ãƒ¼ãƒˆã‚’1æšä½œã‚‹ï¼ˆã™ã§ã«ã‚ã‚Œã°ä½œã‚‰ãªã„ï¼‰
- *   /run           ã‚·ãƒ¼ãƒˆã‚’è¦‹ã¦ã€é€šã™ã¹ãè¡Œã‚’1æœ¬ãšã¤é€²ã‚ã‚‹ï¼ˆé€”ä¸­çµŒéãŒå‡ºã‚‹ï¼‰
- *   /oauth/*       Google ã®è¨±å¯ï¼ˆ2æœ¬ï¼‰
- *   5åˆ†ã”ã¨ã®è‡ªå‹•å®Ÿè¡Œï¼ˆåŒã˜å‡¦ç†ã‚’é™ã‹ã«å‹•ã‹ã™ï¼‰
- *
- * å‹•ç”»ã®é‹ã³æ–¹
- *   Zoom ã‹ã‚‰ 8 MB ãšã¤èª­ã‚“ã§ã€ãã®ã¾ã¾ Google ã¸æ¸¡ã™ã€‚å…¨ä½“ã‚’æºœã‚è¾¼ã¾ãªã„ã®ã§
- *   ãƒ¡ãƒ¢ãƒªã®æ ï¼ˆ128 MBï¼‰ã«è§¦ã‚Œãªã„ã€‚Zoom ã¯é€”ä¸­ã‹ã‚‰ã®èª­ã¿å‡ºã—ã«å¯¾å¿œã—ã¦ã„ã‚‹ã€‚
- *
- * ç¬¬5ç‰ˆã§è¶³ã—ãŸã“ã¨ï¼ˆæ®µéš Cï¼‰
- *   1. é€”ä¸­çµŒéã‚’éŒ²ç”»ã”ã¨ã« R2 ã¸æ®‹ã™ï¼ˆjob/ ã®ä¸‹ï¼‰ã€‚8 MB é€²ã‚€ãŸã³ã«æ›¸ãç›´ã™
- *   2. é€”ä¸­ã§åˆ‡ã‚ŒãŸè¡Œã¨ã€ã‚¨ãƒ©ãƒ¼ã«ãªã£ãŸè¡Œã‚’ã€æ¬¡ã®å®Ÿè¡ŒãŒè‡ªå‹•ã§æ‹¾ã„ç›´ã—ã¦ç¶šãã‹ã‚‰é€²ã‚ã‚‹
- *   3. ã™ã§ã« YouTube ã¸ä¸ŠãŒã£ã¦ã„ã‚‹éŒ²ç”»ã¯ã€äºŒåº¦ã¨ä¸Šã’ãªã„
- *   4. éŒ ã¯å‹•ã„ã¦ã„ã‚‹é–“ãšã£ã¨æŠ¼ã—ç›´ã™ã€‚3åˆ†æŠ¼ã•ã‚Œã¦ã„ãªã‘ã‚Œã°ã€å‰ã®å®Ÿè¡Œã¯è½ã¡ãŸã‚‚ã®ã¨ã¿ãªã™
- *   5. 1å›ã®å®Ÿè¡Œã¯10åˆ†ã§è‡ªåˆ†ã‹ã‚‰ç•³ã‚€ã€‚æ®‹ã‚Šã¯æ¬¡ã®è‡ªå‹•å®Ÿè¡ŒãŒç¶šã‘ã‚‹
- *
- * ç¬¬7ç‰ˆã§è¶³ã—ãŸã“ã¨ãƒ»ç›´ã—ãŸã“ã¨
- *   1. ã€ç›´ã—ã€‘é€”ä¸­çµŒéã®æ§ãˆã®åå‰ã‚’ã€Œå†ç”Ÿç•ªå·ã€ã‹ã‚‰ã€ŒéŒ²ç”»ãã®ã‚‚ã®ã®ç•ªå·ã€ã«å¤‰ãˆãŸã€‚
- *      å†ç”Ÿç•ªå·ã¯åŒã˜å…±æœ‰ãƒªãƒ³ã‚¯ã§ã‚‚æ¯å›å¤‰ã‚ã‚‹ãŸã‚ï¼ˆ2026-08-23 ã«åŒã˜éŒ²ç”»ã¸3å›ãƒ»
- *      åˆ¥ã®éŒ²ç”»ã¸1å›ã‚ãŸã£ã¦å®Ÿæ¸¬ï¼‰ã€æ§ãˆãŒäºŒåº¦ã¨è¦‹ã¤ã‹ã‚‰ãšã€ç¬¬5ç‰ˆãƒ»ç¬¬6ç‰ˆã§ã¯
- *      é€”ä¸­ã‹ã‚‰ã®å†é–‹ã‚‚äºŒé‡æŠ•ç¨¿ã®é˜²æ­¢ã‚‚ã¾ã£ãŸãåŠ¹ã„ã¦ã„ãªã‹ã£ãŸã€‚
- *   2. ã€è¿½åŠ ã€‘åˆ†ã‹ã‚Œã¦ã„ã‚‹éŒ²ç”»ã‚’ã‚¨ãƒ©ãƒ¼ã«ã™ã‚‹ï¼ˆçµ‚ã‚ã‚Šã®æ¡ä»¶4ï¼‰ã€‚Zoom ã®å…±æœ‰ãƒªãƒ³ã‚¯ã®
- *      è¿”ã‚Šã«ã¯æœ¬æ•°ã‚’ç¤ºã™æ¬„ãŒç„¡ã„ã®ã§ï¼ˆ72é …ç›®ã‚’1æœ¬ã®éŒ²ç”»ã®70é …ç›®ã¨çªãåˆã‚ã›ã¦ç¢ºèªï¼‰ã€
- *      Zoom æœ¬ä½“ã®å£ã«ä¼šè­°ã®ç•ªå·ã§å•ã„åˆã‚ã›ã€æœ¬ä½“ã®æ•°ã‚’æ•°ãˆã‚‹ã€‚
- *   3. ã€è¿½åŠ ã€‘/zoom/checkã€€å…±æœ‰ãƒªãƒ³ã‚¯ã‚’1æœ¬æ¸¡ã™ã¨ã€æœ¬æ•°ã ã‘ã‚’æ•°ãˆã¦è¿”ã™ã€‚ä½•ã‚‚ä¸Šã’ãªã„ã€‚
- *
- * æ®‹ã‚‹é™ç•Œï¼ˆåˆ†ã‹ã£ãŸã†ãˆã§ã€ãã®ã¾ã¾ã«ã—ã¦ã‚ã‚‹ï¼‰
- *   Google ã®éµã¯1æ™‚é–“ã§åˆ‡ã‚Œã‚‹ã€‚1æœ¬ã®é€ã‚Šå‡ºã—ãŒ1æ™‚é–“ã‚’è¶…ãˆã‚‹ã¨é€”ä¸­ã§æ­¢ã¾ã‚‹ãŒã€
- *   ãã“ã¾ã§ã®é€²ã¿å…·åˆã¯æ®‹ã£ã¦ã„ã‚‹ã®ã§ã€æ¬¡ã®å®Ÿè¡ŒãŒç¶šãã‹ã‚‰é€²ã‚ã‚‹ã€‚
- *   åˆ†ã‹ã‚ŒãŸéŒ²ç”»ã‚’å…¨éƒ¨ä¸Šã’ã‚‹ã“ã¨ï¼ˆçµ‚ã‚ã‚Šã®æ¡ä»¶5ï¼‰ã¯ä½œã£ã¦ã„ãªã„ã€‚4 ã§ã‚¨ãƒ©ãƒ¼ã«ãªã‚‹ã®ã§ã€
- *   Naoki ãŒè¡Œã‚’åˆ†ã‘ã¦è²¼ã‚Šç›´ã™ã€‚
- */
-
-import { manageStatus, reapplyFormats, syncContentOs, syncManabu, syncManageSheet } from "./manage";
-
-interface Env {
-  STORE: R2Bucket;
-  GOOGLE_CLIENT_ID?: string;
-  GOOGLE_CLIENT_SECRET?: string;
-  ALLOWED_EMAIL?: string;
-  /** Zoom æœ¬ä½“ã®å£ã«å•ã„åˆã‚ã›ã‚‹ãŸã‚ã®3ã¤ï¼ˆServer-to-Server OAuthï¼‰ */
-  ZOOM_ACCOUNT_ID?: string;
-  ZOOM_CLIENT_ID?: string;
-  ZOOM_CLIENT_SECRET?: string;
-  CONTENT_OS_API_BASE?: string;
-  CONTENT_OS_INTERNAL_SECRET?: string;
-  CONTENT_OS_USER_ID?: string;
-  CONTENT_OS_ACCOUNT_ID?: string;
-  MANABU_PUT_SEMINAR_URL?: string;
-  MANABU_PUT_SEMINAR_SECRET?: string;
-}
-
-const UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
-  "(KHTML, like Gecko) Chrome/126.0 Safari/537.36";
-const ZOOM_BASE = "https://us02web.zoom.us";
-
-/** Zoom æœ¬ä½“ã®å£ï¼ˆå…±æœ‰ãƒªãƒ³ã‚¯ã®å´ã§ã¯ãªãã€ã‚¢ã‚«ã‚¦ãƒ³ãƒˆã®æŒã¡ç‰©ã¨ã—ã¦éŒ²ç”»ã‚’è¦‹ã‚‹å´ï¼‰ */
-const ZOOM_TOKEN_URL = "https://zoom.us/oauth/token";
-const ZOOM_API = "https://api.zoom.us/v2";
-const CHUNK = 8 * 1024 * 1024;
-const ROOT_FOLDER = "è¬›ç¾©ã‚³ãƒ³ãƒ†ãƒ³ãƒ„";
-const SHEET_KEY = "config/sheet.json";
-const LOCK_KEY = "run/lock";
-const JOB_PREFIX = "job/";
-
-/** éŒ ãŒã“ã®æ™‚é–“ã ã‘æŠ¼ã—ç›´ã•ã‚Œã¦ã„ãªã‘ã‚Œã°ã€å‰ã®å®Ÿè¡Œã¯è½ã¡ãŸã‚‚ã®ã¨ã¿ãªã™ */
-const LOCK_STALE_MS = 3 * 60 * 1000;
-
-/** 1å›ã®å®Ÿè¡Œã¯ã“ã®æ™‚é–“ã§è‡ªåˆ†ã‹ã‚‰ç•³ã‚€ï¼ˆæ®‹ã‚Šã¯æ¬¡ã®è‡ªå‹•å®Ÿè¡ŒãŒç¶šã‘ã‚‹ï¼‰ */
-const RUN_BUDGET_MS = 10 * 60 * 1000;
-
-/** å‡¦ç†ã®é€”ä¸­ã‚’è¡¨ã™çŠ¶æ…‹ã€‚ã“ã®çŠ¶æ…‹ã®ã¾ã¾æ®‹ã£ã¦ã„ã‚‹è¡Œã¯ã€å‰ã®å®Ÿè¡ŒãŒè½ã¡ãŸæ®‹ã‚Š */
-const MIDWAY: string[] = ["Zoomå–å¾—ä¸­", "Driveä¿å­˜æ¸ˆã¿", "YouTubeæŠ•ç¨¿ä¸­"];
-
-const HEADERS = [
-  "å‡¦ç†ID",
-  "Zoomå…±æœ‰URL",
-  "è¬›ç¾©ã‚¿ã‚¤ãƒˆãƒ«",
-  "åéŒ²æ—¥",
-  "Driveãƒ•ã‚©ãƒ«ãƒ€URL",
-  "YouTube URL",
-  "å‡¦ç†çŠ¶æ…‹",
-  "ã‚¨ãƒ©ãƒ¼å†…å®¹",
-  "æœ€çµ‚æ›´æ–°æ—¥æ™‚",
-] as const;
-
-const COL = {
-  id: 0,
-  share: 1,
-  title: 2,
-  date: 3,
-  drive: 4,
-  youtube: 5,
-  state: 6,
-  error: 7,
-  updated: 8,
-} as const;
-
-const PERMITS = {
-  youtube: {
-    label: "YouTube ã¸å‹•ç”»ã‚’ä¸Šã’ã‚‹è¨±å¯ï¼ˆãƒ–ãƒ©ãƒ³ãƒ‰ã‚¢ã‚«ã‚¦ãƒ³ãƒˆã§é€šã™ï¼‰",
-    key: "auth/youtube.json",
-    scopes: [
-      "https://www.googleapis.com/auth/youtube.upload",
-      "https://www.googleapis.com/auth/youtube.readonly",
-    ].join(" "),
-  },
-  workspace: {
-    label: "ãƒ‰ãƒ©ã‚¤ãƒ–ã¸ä¿å­˜ã—ã€ã‚·ãƒ¼ãƒˆã«æ›¸ãæˆ»ã™è¨±å¯ï¼ˆãµã ã‚“ã® Google ã‚¢ã‚«ã‚¦ãƒ³ãƒˆã§é€šã™ï¼‰",
-    key: "auth/workspace.json",
-    scopes: [
-      "https://www.googleapis.com/auth/drive.file",
-      "https://www.googleapis.com/auth/spreadsheets",
-      "openid",
-      "email",
-    ].join(" "),
-  },
-} as const;
-
-type PermitName = keyof typeof PERMITS;
-
-function isPermitName(v: string | null): v is PermitName {
-  return v === "youtube" || v === "workspace";
-}
-
-interface StoredAuth {
-  refresh_token: string;
-  scope: string;
-  obtained_at: string;
-  email?: string;
-  channel_id?: string;
-  channel_title?: string;
-}
-
-/**
- * 1æœ¬ã¶ã‚“ã®é€”ä¸­çµŒéã€‚éŒ²ç”»ã”ã¨ã«1ã¤ã€R2 ã«æ®‹ã™ã€‚
- *
- * recId ã¯ã€ŒéŒ²ç”»ãã®ã‚‚ã®ã®ç•ªå·ã€ã€‚ç¬¬6ç‰ˆã¾ã§ã¯ã€Œå†ç”Ÿç•ªå·ã€ã‚’ä½¿ã£ã¦ã„ãŸãŒã€
- * ã‚ã‚Œã¯åŒã˜å…±æœ‰ãƒªãƒ³ã‚¯ã§ã‚‚ã‚¢ã‚¯ã‚»ã‚¹ã®ãŸã³ã«å¤‰ã‚ã‚‹ãŸã‚ã€æ§ãˆãŒäºŒåº¦ã¨è¦‹ã¤ã‹ã‚‰ãªã‹ã£ãŸã€‚
- * recId ã¯åŒã˜éŒ²ç”»ãªã‚‰ä½•åº¦å–ã£ã¦ã‚‚åŒã˜ã§ã€åˆ¥ã®éŒ²ç”»ã§ã¯åˆ¥ã«ãªã‚‹ï¼ˆ2026-08-23 å®Ÿæ¸¬ï¼‰ã€‚
- */
-interface Job {
-  recId: string;
-  share: string;
-  rowNo: number;
-  title: string;
-  date: string;
-  size: number;
-  driveFolderId?: string;
-  driveFolderUrl?: string;
-  transcriptDone?: boolean;
-  /** èª­ã‚ã‚‹ç‰ˆï¼ˆGoogle ãƒ‰ã‚­ãƒ¥ãƒ¡ãƒ³ãƒˆï¼‰ã‚’ä½œã‚Šçµ‚ãˆãŸã‹ */
-  transcriptDocDone?: boolean;
-  driveSession?: string;
-  driveDone?: boolean;
-  ytSession?: string;
-  youtubeId?: string;
-  youtubeUrl?: string;
-  privacy?: string;
-  updatedAt: string;
-}
-
-/** å—ã‘å£ãŒæœŸé™åˆ‡ã‚Œã«ãªã£ãŸã¨ãã«æŠ•ã’ã‚‹ */
-class SessionGone extends Error {}
-
-function jobKey(recId: string): string {
-  return JOB_PREFIX + recId.replace(/[^A-Za-z0-9._-]/g, "_") + ".json";
-}
-
-async function loadJob(env: Env, recId: string): Promise<Job | null> {
-  const o = await env.STORE.get(jobKey(recId));
-  if (!o) return null;
-  return JSON.parse(await o.text()) as Job;
-}
-
-async function saveJob(env: Env, job: Job): Promise<void> {
-  job.updatedAt = new Date().toISOString();
-  await env.STORE.put(jobKey(job.recId), JSON.stringify(job));
-}
-
-/* ================================================================== */
-/* å°ç‰©                                                                */
-/* ================================================================== */
-
-function text(body: string, status = 200): Response {
-  return new Response(body, {
-    status,
-    headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
-  });
-}
-
-const sec = (ms: number) => (ms / 1000).toFixed(1);
-const mb = (b: number) => (b / 1024 / 1024).toFixed(1);
-
-function readIdToken(idToken: string): { email?: string } {
-  const part = idToken.split(".")[1];
-  if (!part) return {};
-  const b64 = part.replace(/-/g, "+").replace(/_/g, "/");
-  const bin = atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4));
-  return JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0))));
-}
-
-function missingSetup(env: Env): string[] {
-  const m: string[] = [];
-  if (!env.GOOGLE_CLIENT_ID) m.push("GOOGLE_CLIENT_ID");
-  if (!env.GOOGLE_CLIENT_SECRET) m.push("GOOGLE_CLIENT_SECRET");
-  if (!env.ALLOWED_EMAIL) m.push("ALLOWED_EMAIL");
-  return m;
-}
-
-/** Zoom æœ¬ä½“ã®å£ã‚’ä½¿ã†ãŸã‚ã®3ã¤ã€‚å€¤ãã®ã‚‚ã®ã¯ã©ã®ç”»é¢ã«ã‚‚å‡ºã•ãªã„ */
-function missingZoom(env: Env): string[] {
-  const m: string[] = [];
-  if (!env.ZOOM_ACCOUNT_ID) m.push("ZOOM_ACCOUNT_ID");
-  if (!env.ZOOM_CLIENT_ID) m.push("ZOOM_CLIENT_ID");
-  if (!env.ZOOM_CLIENT_SECRET) m.push("ZOOM_CLIENT_SECRET");
-  return m;
-}
-
-/** æ—¥æœ¬æ™‚é–“ã®å¹´æœˆæ—¥ã«ã™ã‚‹ */
-function jst(msUtc: number): { date: string; year: string; ym: string } {
-  const d = new Date(msUtc + 9 * 60 * 60 * 1000);
-  const y = d.getUTCFullYear().toString();
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(d.getUTCDate()).padStart(2, "0");
-  return { date: `${y}-${m}-${day}`, year: y, ym: `${y}${m}` };
-}
-
-/** Google ãƒ‰ãƒ©ã‚¤ãƒ–ã®ãƒ•ã‚©ãƒ«ãƒ€åã«ä½¿ãˆãªã„æ–‡å­—ã‚’è½ã¨ã™ */
-function safeName(s: string): string {
-  return s.replace(/[\\/:*?"<>|]/g, "_").replace(/\s+/g, " ").trim().slice(0, 100) || "ç„¡é¡Œ";
-}
-
-/* ================================================================== */
-/* Google ã®éµ                                                         */
-/* ================================================================== */
-
-async function accessToken(
-  env: Env,
-  which: PermitName,
-): Promise<{ ok: true; token: string } | { ok: false; why: string }> {
-  const obj = await env.STORE.get(PERMITS[which].key);
-  if (!obj) return { ok: false, why: `${PERMITS[which].label} ã®æ§ãˆãŒã‚ã‚Šã¾ã›ã‚“ã€‚/oauth/start ã‹ã‚‰é€šã—ã¦ãã ã•ã„ã€‚` };
-
-  const saved = JSON.parse(await obj.text()) as StoredAuth;
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: env.GOOGLE_CLIENT_ID as string,
-      client_secret: env.GOOGLE_CLIENT_SECRET as string,
-      refresh_token: saved.refresh_token,
-      grant_type: "refresh_token",
-    }),
-  });
-  const b = (await res.json()) as { access_token?: string; error?: string; error_description?: string };
-  if (!res.ok || !b.access_token) {
-    return {
-      ok: false,
-      why:
-        `${b.error ?? res.status}ï¼${b.error_description ?? "èª¬æ˜ãªã—"}` +
-        (b.error === "invalid_grant" ? "ï¼ˆè¨±å¯ãŒåˆ‡ã‚Œã¦ã„ã¾ã™ã€‚/oauth/start ã‹ã‚‰é€šã—ç›´ã—ã¦ãã ã•ã„ï¼‰" : ""),
-    };
-  }
-  return { ok: true, token: b.access_token };
-}
-
-async function gFetch(token: string, url: string, init: RequestInit = {}): Promise<Response> {
-  const headers = new Headers(init.headers);
-  headers.set("authorization", `Bearer ${token}`);
-  return fetch(url, { ...init, headers });
-}
-
-async function gJson<T>(token: string, url: string, init: RequestInit = {}): Promise<T> {
-  const res = await gFetch(token, url, init);
-  const raw = await res.text();
-  if (!res.ok) throw new Error(`Google ã‹ã‚‰ã®è¿”äº‹ ${res.status}ï¼š${raw.slice(0, 600)}`);
-  return raw ? (JSON.parse(raw) as T) : ({} as T);
-}
-
-/* ================================================================== */
-/* Zoom                                                                */
-/* ================================================================== */
-
-class Jar {
-  private m = new Map<string, string>();
-  absorb(res: Response): void {
-    const h = res.headers as unknown as { getSetCookie?: () => string[] };
-    for (const raw of typeof h.getSetCookie === "function" ? h.getSetCookie() : []) {
-      const first = raw.split(";")[0];
-      const eq = first.indexOf("=");
-      if (eq > 0) this.m.set(first.slice(0, eq).trim(), first.slice(eq + 1).trim());
-    }
-  }
-  header(): string {
-    return [...this.m].map(([k, v]) => `${k}=${v}`).join("; ");
-  }
-}
-
-function zHeaders(jar: Jar, referer?: string, accept?: string): Record<string, string> {
-  const h: Record<string, string> = { "User-Agent": UA };
-  if (referer) h["Referer"] = referer;
-  if (accept) h["Accept"] = accept;
-  const ck = jar.header();
-  if (ck) h["Cookie"] = ck;
-  return h;
-}
-
-async function go(jar: Jar, url: string, referer?: string, accept?: string): Promise<{ res: Response; url: string }> {
-  let cur = url;
-  for (let hop = 0; hop < 10; hop++) {
-    const res = await fetch(cur, { headers: zHeaders(jar, referer, accept), redirect: "manual" });
-    jar.absorb(res);
-    if (res.status >= 300 && res.status < 400) {
-      const loc = res.headers.get("location");
-      if (!loc) return { res, url: cur };
-      await res.body?.cancel();
-      cur = new URL(loc, cur).toString();
-      continue;
-    }
-    return { res, url: cur };
-  }
-  throw new Error("Zoom ã®ãƒªãƒ€ã‚¤ãƒ¬ã‚¯ãƒˆãŒ 10 å›ã‚’è¶…ãˆã¾ã—ãŸ");
-}
-
-interface ZoomInfo {
-  jar: Jar;
-  /**
-   * å†ç”Ÿç•ªå·ã€‚å…±æœ‰ãƒªãƒ³ã‚¯ã‚’é–‹ããŸã³ã«å¤‰ã‚ã‚‹ä½¿ã„æ¨ã¦ã®ç•ªå·ã§ã€
-   * åŒã˜éŒ²ç”»ã‹ã©ã†ã‹ã®åˆ¤å®šã«ã¯ä½¿ãˆãªã„ï¼ˆ2026-08-23 å®Ÿæ¸¬ï¼‰ã€‚å‹•ç”»ã‚’èª­ã‚€ãŸã‚ã ã‘ã«ä½¿ã†ã€‚
-   */
-  pid: string;
-  /** éŒ²ç”»ãã®ã‚‚ã®ã®ç•ªå·ã€‚åŒã˜éŒ²ç”»ãªã‚‰ä½•åº¦å–ã£ã¦ã‚‚åŒã˜ã€‚æ§ãˆã®åå‰ã«ä½¿ã† */
-  recId: string;
-  /** ä¼šè­°ã®ç•ªå·ã€‚Zoom æœ¬ä½“ã®å£ã«ã€Œã“ã®ä¼šè­°ã®éŒ²ç”»ã‚’å…¨éƒ¨ãã ã•ã„ã€ã¨èãã¨ãã«ä½¿ã† */
-  meetingUuid: string;
-  playUrl: string;
-  mp4Url: string;
-  transcript: string | null;
-  topic: string;
-  startedAt: number;
-  durationSec: number;
-}
-
-async function readZoom(share: string): Promise<ZoomInfo> {
-  const jar = new Jar();
-
-  const a = await go(jar, share);
-  if (a.res.status !== 200) throw new Error(`Zoom ã®å…±æœ‰ãƒšãƒ¼ã‚¸ãŒ ${a.res.status} ã‚’è¿”ã—ã¾ã—ãŸ`);
-  const html = await a.res.text();
-  const m = html.match(/meetingId:\s*'([^']+)'/);
-  if (!m) throw new Error("Zoom ã®å…±æœ‰ãƒªãƒ³ã‚¯ãŒç„¡åŠ¹ã‹ã€æœŸé™åˆ‡ã‚Œã§ã™ï¼ˆmeetingId ãŒè¦‹ã¤ã‹ã‚Šã¾ã›ã‚“ï¼‰");
-
-  const s = await go(jar, `${ZOOM_BASE}/nws/recording/1.0/play/share-info/${m[1]}`, share, "application/json");
-  const sj = (await s.res.json()) as { status?: boolean; errorMessage?: string; result?: { redirectUrl?: string } };
-  if (!sj.status || !sj.result?.redirectUrl) throw new Error(`Zoom ãŒéŒ²ç”»ã®å ´æ‰€ã‚’è¿”ã—ã¾ã›ã‚“ï¼š${sj.errorMessage ?? "ç†ç”±ãªã—"}`);
-
-  const pid = sj.result.redirectUrl.split("/").filter(Boolean).pop() as string;
-  const playUrl = ZOOM_BASE + sj.result.redirectUrl;
-
-  const p = await go(jar, playUrl, share);
-  await p.res.body?.cancel();
-
-  const i = await go(jar, `${ZOOM_BASE}/nws/recording/1.0/play/info/${pid}`, playUrl, "application/json");
-  const ij = (await i.res.json()) as { status?: boolean; errorMessage?: string; result?: Record<string, unknown> };
-  if (!ij.status || !ij.result) throw new Error(`Zoom ãŒéŒ²ç”»ã®æƒ…å ±ã‚’è¿”ã—ã¾ã›ã‚“ï¼š${ij.errorMessage ?? "ç†ç”±ãªã—"}`);
-
-  const r = ij.result as {
-    meet?: { topic?: string };
-    fileStartTime?: number;
-    duration?: number;
-    mp4Url?: string;
-    transcriptUrl?: string;
-    disableDownload?: boolean;
-    recording?: { id?: string; meetingId?: string };
-  };
-  if (r.disableDownload) throw new Error("ã“ã®éŒ²ç”»ã¯å–å¾—ãŒç¦æ­¢ã«è¨­å®šã•ã‚Œã¦ã„ã¾ã™ï¼ˆZoom ã®è¨­å®šã‚’ç¢ºèªã—ã¦ãã ã•ã„ï¼‰");
-  if (!r.mp4Url) throw new Error("Zoom ãŒå‹•ç”»ã®å ´æ‰€ã‚’è¿”ã—ã¾ã›ã‚“");
-
-  let transcript: string | null = null;
-  if (r.transcriptUrl) {
-    const v = await go(jar, ZOOM_BASE + r.transcriptUrl, playUrl);
-    if (v.res.ok) transcript = await v.res.text();
-    else await v.res.body?.cancel();
-  }
-
-  const recId = r.recording?.id;
-  const meetingUuid = r.recording?.meetingId;
-  if (!recId) throw new Error("Zoom ãŒéŒ²ç”»ãã®ã‚‚ã®ã®ç•ªå·ã‚’è¿”ã—ã¾ã›ã‚“");
-  if (!meetingUuid) throw new Error("Zoom ãŒä¼šè­°ã®ç•ªå·ã‚’è¿”ã—ã¾ã›ã‚“");
-
-  return {
-    jar,
-    pid,
-    recId,
-    meetingUuid,
-    playUrl,
-    mp4Url: r.mp4Url,
-    transcript,
-    topic: r.meet?.topic ?? "",
-    startedAt: r.fileStartTime ?? Date.now(),
-    durationSec: r.duration ?? 0,
-  };
-}
-
-/* ================================================================== */
-/* Zoom æœ¬ä½“ã®å£ï¼ˆåˆ†ã‹ã‚Œã¦ã„ã‚‹ã‹ã‚’æ•°ãˆã‚‹ï¼‰                             */
-/* ================================================================== */
-
-/**
- * Zoom ã®éµã‚’1æœ¬å–ã‚‹ã€‚æœ‰åŠ¹ãªã®ã¯1æ™‚é–“ã ã‘ã§ã€ä½œã‚Šç›´ã™ä»•çµ„ã¿ã¯ç„¡ã„ï¼ˆæ¯å›å–ã‚Šç›´ã™ï¼‰ã€‚
- */
-async function zoomToken(env: Env): Promise<string> {
-  const missing = missingZoom(env);
-  if (missing.length > 0) {
-    throw new Error(`Zoom æœ¬ä½“ã®å£ã®è¨­å®šãŒè¶³ã‚Šã¾ã›ã‚“ï¼ˆ${missing.join(", ")}ï¼‰ã€‚Cloudflare ã® Secret ã«å…¥ã‚Œã¦ãã ã•ã„`);
-  }
-
-  const basic = btoa(`${env.ZOOM_CLIENT_ID}:${env.ZOOM_CLIENT_SECRET}`);
-  const res = await fetch(ZOOM_TOKEN_URL, {
-    method: "POST",
-    headers: {
-      authorization: `Basic ${basic}`,
-      "content-type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
-      grant_type: "account_credentials",
-      account_id: env.ZOOM_ACCOUNT_ID as string,
-    }),
-  });
-  const b = (await res.json()) as { access_token?: string; error?: string; reason?: string };
-  if (!res.ok || !b.access_token) {
-    throw new Error(`Zoom ã®éµãŒå–ã‚Œã¾ã›ã‚“ï¼ˆ${res.status}ï¼${b.reason ?? b.error ?? "ç†ç”±ãªã—"}ï¼‰`);
-  }
-  return b.access_token;
-}
-
-/**
- * ä¼šè­°ã®ç•ªå·ã‚’ä½æ‰€ã«åŸ‹ã‚è¾¼ã‚ã‚‹å½¢ã«ã™ã‚‹ã€‚
- * Zoom ã®æ±ºã¾ã‚Šã§ã€ç•ªå·ãŒ / ã§å§‹ã¾ã‚‹ã‹ // ã‚’å«ã‚€ã¨ãã ã‘äºŒé‡ã«å¤‰æ›ã™ã‚‹ã€‚
- */
-function uuidPath(uuid: string): string {
-  const once = encodeURIComponent(uuid);
-  return uuid.startsWith("/") || uuid.includes("//") ? encodeURIComponent(once) : once;
-}
-
-interface ZoomFile {
-  id?: string;
-  file_type?: string;
-  file_extension?: string;
-  recording_start?: string;
-  recording_end?: string;
-  recording_type?: string;
-  status?: string;
-  file_size?: number;
-}
-
-interface Segments {
-  /** æœ¬ä½“ãŒä½•æœ¬ã«åˆ†ã‹ã‚Œã¦ã„ã‚‹ã‹ */
-  count: number;
-  /** 1æœ¬ãšã¤ã®å§‹ã¾ã‚Šã®æ™‚åˆ»ï¼ˆZoom ãŒè¿”ã—ãŸæ–‡å­—åˆ—ã®ã¾ã¾ï¼‰ */
-  starts: string[];
-  /** å‹•ç”»ä»¥å¤–ã‚‚å«ã‚ãŸã€Zoom ãŒè¿”ã—ãŸãƒ•ã‚¡ã‚¤ãƒ«ã®ç·æ•° */
-  files: number;
-}
-
-/**
- * ä¼šè­°ã²ã¨ã¤ã¶ã‚“ã®éŒ²ç”»ã‚’ Zoom æœ¬ä½“ã«èã„ã¦ã€æœ¬ä½“ãŒä½•æœ¬ã‚ã‚‹ã‹ã‚’æ•°ãˆã‚‹ã€‚
- *
- * æ•°ãˆæ–¹ã®æ³¨æ„ï¼šè¿”ã£ã¦ãã‚‹ãƒ•ã‚¡ã‚¤ãƒ«ã«ã¯ã€éŸ³å£°ã ã‘ãƒ»ãƒãƒ£ãƒƒãƒˆãƒ»æ–‡å­—èµ·ã“ã—ã‚‚æ··ã–ã£ã¦ã„ã‚‹ã€‚
- * ã•ã‚‰ã«1ã¤ã®æœ¬ä½“ã«å¯¾ã—ã¦ç”»é¢ä»˜ãã¨å‚åŠ è€…ä¸€è¦§ã®2ã¤ã®å‹•ç”»ãŒä½œã‚‰ã‚Œã‚‹è¨­å®šã‚‚ã‚ã‚‹ãŸã‚ã€
- * å‹•ç”»ã®æœ¬æ•°ã‚’ãã®ã¾ã¾æ•°ãˆã‚‹ã¨åˆ†ã‹ã‚Œã¦ã„ãªã„ã‚‚ã®ã¾ã§2æœ¬ã«è¦‹ãˆã‚‹ã€‚
- * ã‚ˆã£ã¦ã€Œå‹•ç”»ã®å§‹ã¾ã‚Šã®æ™‚åˆ»ãŒä½•ç¨®é¡ã‚ã‚‹ã‹ã€ã§æ•°ãˆã‚‹ã€‚
- */
-async function zoomSegments(env: Env, meetingUuid: string): Promise<Segments> {
-  const token = await zoomToken(env);
-  const res = await fetch(`${ZOOM_API}/meetings/${uuidPath(meetingUuid)}/recordings`, {
-    headers: { authorization: `Bearer ${token}` },
-  });
-  const raw = await res.text();
-  if (!res.ok) {
-    throw new Error(`Zoom æœ¬ä½“ãŒéŒ²ç”»ã®ä¸€è¦§ã‚’è¿”ã—ã¾ã›ã‚“ï¼ˆ${res.status}ï¼${raw.slice(0, 300)}ï¼‰`);
-  }
-
-  const body = JSON.parse(raw) as { recording_files?: ZoomFile[] };
-  const all = body.recording_files ?? [];
-  const videos = all.filter((f) => (f.file_type ?? "").toUpperCase() === "MP4");
-  const starts = [...new Set(videos.map((f) => f.recording_start ?? "").filter(Boolean))].sort();
-
-  return {
-    // å§‹ã¾ã‚Šã®æ™‚åˆ»ãŒå–ã‚Œãªã„ã¨ãã¯ã€å‹•ç”»ã®æœ¬æ•°ã‚’ãã®ã¾ã¾ä½¿ã†ï¼ˆæ•°ãˆè½ã¨ã—ã‚’ä½œã‚‰ãªã„ï¼‰
-    count: starts.length > 0 ? starts.length : videos.length,
-    starts,
-    files: all.length,
-  };
-}
-
-/* ================================================================== */
-/* æ–‡å­—èµ·ã“ã—ã‚’èª­ã‚ã‚‹æ–‡ç« ã«ç›´ã™                                        */
-/* ================================================================== */
-
-/**
- * Zoom ã®èãå–ã‚ŠãŒæ±ºã¾ã£ã¦å¤–ã™è¨€è‘‰ã®ç›´ã—è¡¨ã€‚
- * ã“ã“ã«è¶³ã™ã¨ãã¯ã€å®Ÿéš›ã«å¤–ã‚ŒãŸå®Ÿç‰©ã‚’è¦‹ã¦ã‹ã‚‰è¶³ã™ã“ã¨ï¼ˆæ€ã„ã¤ãã§è¶³ã•ãªã„ï¼‰ã€‚
- */
-const KIKITORI_NAOSHI: [RegExp, string][] = [
-  [/ã‚·ã‚§ã‚¢ãƒ­ãƒ–|ã‚·ã‚¢ãƒ©ãƒœ|ã—ã‚ƒã‚‰ã¼|ã‚·ã‚§ã‚¢ãƒ©ãƒœ/g, "ã—ã‚ã‚‰ã¼"],
-  [/æ©˜æ˜/g, "æ©˜ç²"],
-  [/ãƒã‚³ãƒã‚³/g, "ã½ã“ã½ã“"],
-];
-
-/** 1 ã¤ã®æ®µè½ã®ç›®å®‰ã®é•·ã•ã€‚ã“ã‚Œã‚’è¶…ãˆãŸã‚‰æ¬¡ã®ã‹ãŸã¾ã‚Šã¸åˆ†ã‘ã‚‹ */
-const DANRAKU_LIMIT = 300;
-
-interface PlainTranscript {
-  /** è©±ã—ãŸäººã®åå‰ã€‚Zoom ãŒä»˜ã‘ãŸã‚‚ã®ã‚’ãã®ã¾ã¾ */
-  speakers: string[];
-  /** è©±ã—ãŸäººãŒ 1 äººã ã‘ã‹ */
-  solo: boolean;
-  /** æ®µè½ã®æ•° */
-  paragraphs: number;
-  /** æœ¬æ–‡ */
-  body: string;
-}
-
-/**
- * Zoom ã®æ–‡å­—èµ·ã“ã—ï¼ˆæ™‚åˆ»ã¤ãï¼‰ã‚’ã€èª­ã‚ã‚‹æ–‡ç« ã«ç›´ã™ã€‚
- * ãƒ»ç•ªå·ã®è¡Œã¨æ™‚åˆ»ã®è¡Œã‚’è½ã¨ã™
- * ãƒ»åŒã˜äººãŒç¶šã‘ã¦è©±ã—ã¦ã„ã‚‹ã¨ã“ã‚ã¯ 1 ã¤ã®æ®µè½ã«ã¾ã¨ã‚ã‚‹
- * ãƒ»è©±ã—ãŸäººãŒ 1 äººã ã‘ã®ã¨ãã¯åå‰ã‚’å‡ºã•ãªã„ï¼ˆæ¯è¡Œã«åŒã˜åå‰ãŒä¸¦ã¶ã®ã‚’é¿ã‘ã‚‹ï¼‰
- */
-function vttToPlain(vtt: string): PlainTranscript {
-  const cues: { who: string; text: string }[] = [];
-
-  for (const block of vtt.replace(/\r/g, "").split(/\n{2,}/)) {
-    const lines = block.split("\n").map((s) => s.trim()).filter(Boolean);
-    if (!lines.length) continue;
-    if (/^WEBVTT/.test(lines[0])) continue;
-
-    const body = lines.filter((l) => !/^\d+$/.test(l) && !l.includes("-->")).join(" ").trim();
-    if (!body) continue;
-
-    const m = body.match(/^([^:ï¼š]{1,20})[:ï¼š]\s*(.*)$/);
-    if (m) {
-      if (m[2].trim()) cues.push({ who: m[1].trim(), text: m[2].trim() });
-    } else {
-      cues.push({ who: "", text: body });
-    }
-  }
-
-  const speakers = [...new Set(cues.map((c) => c.who).filter(Boolean))];
-  const solo = speakers.length <= 1;
-
-  const paras: { who: string; text: string }[] = [];
-  let cur: { who: string; text: string } | null = null;
-  for (const c of cues) {
-    if (!c.text) continue;
-    if (cur && cur.who === c.who && cur.text.length < DANRAKU_LIMIT) cur.text += c.text;
-    else {
-      if (cur) paras.push(cur);
-      cur = { who: c.who, text: c.text };
-    }
-  }
-  if (cur) paras.push(cur);
-
-  const lines = paras.map((p) => (solo || !p.who ? p.text : `${p.who}ï¼š${p.text}`));
-  let body = lines.join("\n\n");
-  for (const [re, to] of KIKITORI_NAOSHI) body = body.replace(re, to);
-
-  return { speakers, solo, paragraphs: lines.length, body };
-}
-
-/** èª­ã‚ã‚‹ç‰ˆã®å…ˆé ­ã«ç½®ãè¦‹å‡ºã— */
-function docHeader(title: string, date: string, durationSec: number, t: PlainTranscript): string {
-  const min = Math.round(durationSec / 60);
-  const who = t.speakers.length ? t.speakers.join("ãƒ»") : "ï¼ˆåå‰ãªã—ï¼‰";
-  return [
-    title,
-    `åéŒ²æ—¥ ${date} ï¼ é•·ã• ${min} åˆ† ï¼ è©±ã—ãŸäºº ${who}`,
-    "ã“ã®æ–‡ç« ã¯ Zoom ã®èãå–ã‚Šã‚’è‡ªå‹•ã§ç›´ã—ãŸã‚‚ã®ã§ã™ã€‚å›ºæœ‰åè©ã¨æ•°å­—ã¯å…ƒã®å‹•ç”»ã§ç¢ºã‹ã‚ã¦ãã ã•ã„ã€‚",
-    "",
-    "",
-  ].join("\n");
-}
-
-/* ================================================================== */
-/* ãƒ‰ãƒ©ã‚¤ãƒ–                                                            */
-/* ================================================================== */
-
-async function folder(token: string, name: string, parent: string | null): Promise<string> {
-  const q = [
-    `name = '${name.replace(/'/g, "\\'")}'`,
-    "mimeType = 'application/vnd.google-apps.folder'",
-    "trashed = false",
-    parent ? `'${parent}' in parents` : "'root' in parents",
-  ].join(" and ");
-
-  const found = await gJson<{ files?: { id: string }[] }>(
-    token,
-    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)&pageSize=1`,
-  );
-  if (found.files?.[0]) return found.files[0].id;
-
-  const made = await gJson<{ id: string }>(token, "https://www.googleapis.com/drive/v3/files?fields=id", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      name,
-      mimeType: "application/vnd.google-apps.folder",
-      parents: parent ? [parent] : undefined,
-    }),
-  });
-  return made.id;
-}
-
-async function putSmallFile(
-  token: string,
-  name: string,
-  parent: string,
-  mime: string,
-  body: string,
-  /** ãƒ‰ãƒ©ã‚¤ãƒ–å´ã§ä½•ã¨ã—ã¦æŒã¤ã‹ã€‚Google ãƒ‰ã‚­ãƒ¥ãƒ¡ãƒ³ãƒˆã«ã—ãŸã„ã¨ãã ã‘æ¸¡ã™ */
-  driveMime?: string,
-): Promise<string> {
-  const boundary = "b" + crypto.randomUUID().replace(/-/g, "");
-  const meta: Record<string, unknown> = { name, parents: [parent] };
-  if (driveMime) meta.mimeType = driveMime;
-  const payload =
-    `--${boundary}\r\ncontent-type: application/json; charset=UTF-8\r\n\r\n` +
-    JSON.stringify(meta) +
-    `\r\n--${boundary}\r\ncontent-type: ${mime}; charset=UTF-8\r\n\r\n` +
-    body +
-    `\r\n--${boundary}--`;
-
-  const r = await gJson<{ id: string }>(
-    token,
-    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id",
-    { method: "POST", headers: { "content-type": `multipart/related; boundary=${boundary}` }, body: payload },
-  );
-  return r.id;
-}
-
-/* ================================================================== */
-/* 8 MB ãšã¤é‹ã¶                                                       */
-/* ================================================================== */
-
-/** Google ã®å—ã‘å£ã‚’1ã¤é–‹ã„ã¦ã€ãã®ä½æ‰€ã‚’è¿”ã™ */
-async function openSession(token: string, url: string, meta: unknown, size: number, mime: string): Promise<string> {
-  const res = await gFetch(token, url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json; charset=UTF-8",
-      "x-upload-content-type": mime,
-      "x-upload-content-length": String(size),
-    },
-    body: JSON.stringify(meta),
-  });
-  const loc = res.headers.get("location");
-  if (!res.ok || !loc) throw new Error(`å—ã‘å£ã‚’é–‹ã‘ã¾ã›ã‚“ ${res.status}ï¼š${(await res.text()).slice(0, 600)}`);
-  return loc;
-}
-
-/** Zoom ã‹ã‚‰ 8 MB ãšã¤èª­ã‚“ã§ã€é–‹ã„ãŸå—ã‘å£ã¸æ¸¡ã™ */
-async function relay(
-  z: ZoomInfo,
-  size: number,
-  session: string,
-  token: string,
-  from: number,
-  out: (s: string) => void,
-  beat: () => Promise<void>,
-): Promise<Record<string, unknown>> {
-  const t0 = Date.now();
-  let sent = from;
-
-  while (sent < size) {
-    const end = Math.min(sent + CHUNK, size) - 1;
-
-    const part = await fetch(z.mp4Url, {
-      headers: { ...zHeaders(z.jar, z.playUrl), Range: `bytes=${sent}-${end}` },
-    });
-    if (part.status !== 206 && part.status !== 200) {
-      throw new Error(`Zoom ãŒå‹•ç”»ã®ä¸€éƒ¨ã‚’è¿”ã—ã¾ã›ã‚“ï¼ˆ${part.status}ï¼‰`);
-    }
-    const buf = await part.arrayBuffer();
-
-    const put = await gFetch(token, session, {
-      method: "PUT",
-      headers: {
-        "content-range": `bytes ${sent}-${sent + buf.byteLength - 1}/${size}`,
-        "content-type": "video/mp4",
-      },
-      body: buf,
-    });
-
-    if (put.status === 308) {
-      sent += buf.byteLength;
-      await beat();
-      out(`      ${mb(sent)} / ${mb(size)} MBï¼ˆ${sec(Date.now() - t0)} ç§’ï¼‰`);
-      continue;
-    }
-    if (put.ok) {
-      sent += buf.byteLength;
-      await beat();
-      out(`      ${mb(sent)} / ${mb(size)} MBï¼ˆ${sec(Date.now() - t0)} ç§’ï¼‰å®Œäº†`);
-      const raw = await put.text();
-      return raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-    }
-    if (put.status === 404 || put.status === 410) {
-      await put.body?.cancel();
-      throw new SessionGone("å—ã‘å£ã®æœŸé™ãŒåˆ‡ã‚Œã¾ã—ãŸ");
-    }
-    throw new Error(`é€ã‚Šå‡ºã—ãŒæ­¢ã¾ã‚Šã¾ã—ãŸ ${put.status}ï¼š${(await put.text()).slice(0, 600)}`);
-  }
-  throw new Error("é€ã‚Šçµ‚ãˆãŸã®ã« Google ã‹ã‚‰å®Œäº†ã®è¿”äº‹ãŒã‚ã‚Šã¾ã›ã‚“");
-}
-
-type Probe =
-  | { kind: "sent"; sent: number }
-  | { kind: "done"; body: Record<string, unknown> }
-  | { kind: "gone" };
-
-/** å—ã‘å£ãŒã©ã“ã¾ã§å—ã‘å–ã£ãŸã‹ã‚’èã */
-async function askSession(token: string, session: string, size: number): Promise<Probe> {
-  const res = await gFetch(token, session, {
-    method: "PUT",
-    headers: { "content-range": `bytes */${size}` },
-  });
-  if (res.ok) {
-    const raw = await res.text();
-    return { kind: "done", body: raw ? (JSON.parse(raw) as Record<string, unknown>) : {} };
-  }
-  if (res.status === 308) {
-    const range = res.headers.get("range");
-    await res.body?.cancel();
-    if (!range) return { kind: "sent", sent: 0 };
-    const end = Number(range.split("-")[1]);
-    return { kind: "sent", sent: Number.isFinite(end) ? end + 1 : 0 };
-  }
-  await res.body?.cancel();
-  return { kind: "gone" };
-}
-
-/** å‹•ç”»ã‚’1ã‹æ‰€ã¸é€ã‚‹ã€‚å—ã‘å£ãŒã‚ã‚Œã°ç¶šãã‹ã‚‰ã€ç„¡ã‘ã‚Œã°é–‹ã„ã¦ã‹ã‚‰ */
-async function sendVideo(
-  z: ZoomInfo,
-  size: number,
-  token: string,
-  open: () => Promise<string>,
-  had: string | undefined,
-  remember: (session: string) => Promise<void>,
-  out: (s: string) => void,
-  beat: () => Promise<void>,
-): Promise<Record<string, unknown>> {
-  let session = had;
-  let from = 0;
-
-  if (session) {
-    const asked = await askSession(token, session, size);
-    if (asked.kind === "done") {
-      out("      ã™ã§ã«é€ã‚Šçµ‚ãˆã¦ã„ã¾ã—ãŸ");
-      return asked.body;
-    }
-    if (asked.kind === "sent") {
-      from = asked.sent;
-      out(`      ç¶šãã‹ã‚‰é€ã‚Šã¾ã™ï¼ˆ${mb(from)} / ${mb(size)} MB ã¾ã§æ¸ˆã¿ï¼‰`);
-    } else {
-      out("      å‰ã®å—ã‘å£ã¯ã‚‚ã†ä½¿ãˆãªã„ã®ã§ã€é–‹ãç›´ã—ã¾ã™");
-      session = undefined;
-    }
-  }
-
-  if (!session) {
-    session = await open();
-    from = 0;
-    await remember(session);
-  }
-
-  try {
-    return await relay(z, size, session, token, from, out, beat);
-  } catch (e) {
-    if (!(e instanceof SessionGone)) throw e;
-    out("      å—ã‘å£ãŒé€”ä¸­ã§ä½¿ãˆãªããªã£ãŸã®ã§ã€é–‹ãç›´ã—ã¦æœ€åˆã‹ã‚‰é€ã‚Šã¾ã™");
-    const fresh = await open();
-    await remember(fresh);
-    return await relay(z, size, fresh, token, 0, out, beat);
-  }
-}
-
-/* ================================================================== */
-/* ã‚·ãƒ¼ãƒˆ                                                              */
-/* ================================================================== */
-
-async function sheetId(env: Env): Promise<string | null> {
-  const o = await env.STORE.get(SHEET_KEY);
-  if (!o) return null;
-  return (JSON.parse(await o.text()) as { id: string }).id;
-}
-
-async function makeSheet(env: Env, token: string): Promise<{ id: string; url: string; made: boolean }> {
-  const existing = await sheetId(env);
-  if (existing) return { id: existing, url: `https://docs.google.com/spreadsheets/d/${existing}/edit`, made: false };
-
-  const made = await gJson<{ spreadsheetId: string }>(token, "https://sheets.googleapis.com/v4/spreadsheets", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      properties: { title: "ZooméŒ²ç”»ã®å—ã‘ä»˜ã‘ï¼ˆzoom-to-youtubeï¼‰" },
-      sheets: [{ properties: { title: "å—ä»˜", gridProperties: { frozenRowCount: 1 } } }],
-    }),
-  });
-
-  await gJson(
-    token,
-    `https://sheets.googleapis.com/v4/spreadsheets/${made.spreadsheetId}/values/å—ä»˜!A1?valueInputOption=RAW`,
-    { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ values: [HEADERS] }) },
-  );
-
-  await env.STORE.put(SHEET_KEY, JSON.stringify({ id: made.spreadsheetId, created: new Date().toISOString() }));
-  return {
-    id: made.spreadsheetId,
-    url: `https://docs.google.com/spreadsheets/d/${made.spreadsheetId}/edit`,
-    made: true,
-  };
-}
-
-async function readRows(token: string, id: string): Promise<string[][]> {
-  const r = await gJson<{ values?: string[][] }>(
-    token,
-    `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent("å—ä»˜!A2:I500")}`,
-  );
-  return r.values ?? [];
-}
-
-async function writeRow(token: string, id: string, rowNo: number, row: string[]): Promise<void> {
-  const padded = [...row];
-  while (padded.length < HEADERS.length) padded.push("");
-  await gJson(
-    token,
-    `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(
-      `å—ä»˜!A${rowNo}:I${rowNo}`,
-    )}?valueInputOption=RAW`,
-    { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ values: [padded] }) },
-  );
-}
-
-/* ================================================================== */
-/* 1è¡Œã¶ã‚“ã®å‡¦ç†                                                       */
-/* ================================================================== */
-
-async function processRow(
-  env: Env,
-  wsToken: string,
-  sid: string,
-  rowNo: number,
-  row: string[],
-  out: (s: string) => void,
-  beat: () => Promise<void>,
-): Promise<void> {
-  const set = async (state: string, err = "") => {
-    row[COL.state] = state;
-    row[COL.error] = err;
-    row[COL.updated] = new Date().toISOString();
-    await writeRow(wsToken, sid, rowNo, row);
-  };
-
-  if (!row[COL.id]) row[COL.id] = `R${Date.now().toString(36)}`;
-
-  try {
-    out(`ã€${rowNo}è¡Œç›®ã€‘${row[COL.title] || "ï¼ˆé¡Œåãªã—ï¼‰"}`);
-    await set("Zoomå–å¾—ä¸­");
-    await beat();
-
-    const z = await readZoom(row[COL.share].trim());
-    const when = jst(z.startedAt);
-    const title = safeName(row[COL.title] || z.topic || "ç„¡é¡Œ");
-    row[COL.date] = when.date;
-    out(`  åéŒ²æ—¥ ${when.date} ï¼ é•·ã• ${Math.round(z.durationSec / 60)} åˆ†`);
-
-    /**
-     * åˆ†ã‹ã‚Œã¦ã„ãªã„ã‹ã‚’ã€ä½•ã‹ã‚’ä¸Šã’ã‚‹å‰ã«ç¢ºã‹ã‚ã‚‹ï¼ˆçµ‚ã‚ã‚Šã®æ¡ä»¶4ï¼‰ã€‚
-     * å…±æœ‰ãƒªãƒ³ã‚¯ã®è¿”ã‚Šã¯åˆ†ã‹ã‚Œã¦ã„ã¦ã‚‚1æœ¬ç›®ã—ã‹è¿”ã•ãšã€åˆå›³ã‚‚å‡ºã•ãªã„ã€‚
-     * ã“ã“ã§æ­¢ã‚ãªã„ã¨ã€ã‚»ãƒŸãƒŠãƒ¼ãŒé»™ã£ã¦æ¬ ã‘ãŸã¾ã¾ã€Œå®Œäº†ã€ã«ãªã‚‹ã€‚
-     * æ•°ãˆã‚‰ã‚Œãªã‹ã£ãŸã¨ãã‚‚é€šã•ãªã„ã€‚é€šã—ã¦ã—ã¾ã†ã¨ã€æ°—ã¥ã‘ãªã„çŠ¶æ…‹ã«æˆ»ã‚‹ãŸã‚ã€‚
-     */
-    const seg = await zoomSegments(env, z.meetingUuid);
-    if (seg.count >= 2) {
-      throw new Error(
-        `éŒ²ç”»ãŒ ${seg.count} æœ¬ã«åˆ†ã‹ã‚Œã¦ã„ã¾ã™ã€‚è¡Œã‚’ ${seg.count} æœ¬ã«åˆ†ã‘ã¦ã€` +
-          `Zoom ã®éŒ²ç”»ã®ç”»é¢ã‹ã‚‰ãã‚Œãã‚Œã®å…±æœ‰ãƒªãƒ³ã‚¯ã‚’è²¼ã‚Šç›´ã—ã¦ãã ã•ã„`,
-      );
-    }
-    out(`  åˆ†ã‹ã‚Œã¦ã„ãªã„ã“ã¨ã‚’ç¢ºèªã—ãŸï¼ˆæœ¬ä½“ ${seg.count} æœ¬ï¼‰`);
-
-    // åŒã˜éŒ²ç”»ãŒã™ã§ã«ä¸ŠãŒã£ã¦ã„ãªã„ã‹
-    let job = await loadJob(env, z.recId);
-    if (job?.youtubeUrl && job.rowNo !== rowNo) {
-      row[COL.drive] = job.driveFolderUrl ?? "";
-      row[COL.youtube] = job.youtubeUrl;
-      await set("å®Œäº†", `åŒã˜éŒ²ç”»ãŒ ${job.rowNo} è¡Œç›®ã§ã™ã§ã«ä¸ŠãŒã£ã¦ã„ã¾ã™ã€‚ä¸Šã’ç›´ã—ã¦ã„ã¾ã›ã‚“`);
-      out(`  åŒã˜éŒ²ç”»ãŒ ${job.rowNo} è¡Œç›®ã§ä¸ŠãŒã£ã¦ã„ã‚‹ã®ã§ã€ä¸Šã’ç›´ã—ã¾ã›ã‚“ã§ã—ãŸ`);
-      return;
-    }
-
-    // å‹•ç”»ã®å¤§ãã•ã‚’å…ˆã«èã
-    const head = await fetch(z.mp4Url, { headers: { ...zHeaders(z.jar, z.playUrl), Range: "bytes=0-0" } });
-    const cr = head.headers.get("content-range");
-    await head.body?.cancel();
-    const size = cr ? Number(cr.split("/")[1]) : 0;
-    if (!size) throw new Error("å‹•ç”»ã®å¤§ãã•ãŒåˆ†ã‹ã‚Šã¾ã›ã‚“ï¼ˆZoom ãŒ content-range ã‚’è¿”ã—ã¾ã›ã‚“ï¼‰");
-    out(`  å‹•ç”»ã®å¤§ãã• ${mb(size)} MB`);
-
-    if (!job) {
-      job = { recId: z.recId, share: row[COL.share].trim(), rowNo, title, date: when.date, size, updatedAt: "" };
-    } else {
-      job.rowNo = rowNo;
-      job.title = title;
-      job.date = when.date;
-      job.size = size;
-      out("  å‰å›ã®é€”ä¸­çµŒéãŒæ®‹ã£ã¦ã„ã¾ã—ãŸã€‚ç¶šãã‹ã‚‰é€²ã‚ã¾ã™");
-    }
-    await saveJob(env, job);
-    const j = job;
-
-    // ãƒ‰ãƒ©ã‚¤ãƒ–ã®ç½®ãå ´ã‚’ç”¨æ„ã™ã‚‹
-    if (!j.driveFolderId) {
-      const root = await folder(wsToken, ROOT_FOLDER, null);
-      const yearId = await folder(wsToken, when.year, root);
-      const ymId = await folder(wsToken, when.ym, yearId);
-      const dest = await folder(wsToken, `${when.date}_${title}`, ymId);
-      j.driveFolderId = dest;
-      j.driveFolderUrl = `https://drive.google.com/drive/folders/${dest}`;
-      await saveJob(env, j);
-      out("  ç½®ãå ´ã‚’ç”¨æ„ã—ãŸ");
-    } else {
-      out("  ç½®ãå ´ã¯ç”¨æ„æ¸ˆã¿ã§ã™");
-    }
-    row[COL.drive] = j.driveFolderUrl as string;
-
-    // æ–‡å­—èµ·ã“ã—ï¼ˆæ™‚åˆ»ã¤ãã®å…ƒã®ã¾ã¾ï¼‰
-    if (j.transcriptDone) {
-      out("  æ–‡å­—èµ·ã“ã—ã¯ä¿å­˜æ¸ˆã¿ã§ã™");
-    } else if (z.transcript) {
-      await putSmallFile(wsToken, `${when.date}_${title}.vtt`, j.driveFolderId as string, "text/vtt", z.transcript);
-      j.transcriptDone = true;
-      await saveJob(env, j);
-      out(`  æ–‡å­—èµ·ã“ã—ã‚’ä¿å­˜ã—ãŸï¼ˆ${z.transcript.length} æ–‡å­—ï¼‰`);
-    } else {
-      j.transcriptDone = true;
-      j.transcriptDocDone = true;
-      await saveJob(env, j);
-      out("  æ–‡å­—èµ·ã“ã—ã¯ Zoom å´ã«ã‚ã‚Šã¾ã›ã‚“");
-    }
-
-    // æ–‡å­—èµ·ã“ã—ã®èª­ã‚ã‚‹ç‰ˆï¼ˆGoogle ãƒ‰ã‚­ãƒ¥ãƒ¡ãƒ³ãƒˆï¼‰
-    if (j.transcriptDocDone) {
-      out("  èª­ã‚ã‚‹ç‰ˆã¯ä½œæˆæ¸ˆã¿ã§ã™");
-    } else if (z.transcript) {
-      const plain = vttToPlain(z.transcript);
-      await putSmallFile(
-        wsToken,
-        `${when.date}_${title}_æ–‡å­—èµ·ã“ã—`,
-        j.driveFolderId as string,
-        "text/plain",
-        docHeader(title, when.date, z.durationSec, plain) + plain.body,
-        "application/vnd.google-apps.document",
-      );
-      j.transcriptDocDone = true;
-      await saveJob(env, j);
-      out(
-        `  èª­ã‚ã‚‹ç‰ˆã‚’ä½œã£ãŸï¼ˆè©±ã—ãŸäºº ${plain.speakers.length} äººãƒ»æ®µè½ ${plain.paragraphs}ãƒ»${plain.body.length} æ–‡å­—ï¼‰`,
-      );
-    }
-
-    // å‹•ç”»ã‚’ãƒ‰ãƒ©ã‚¤ãƒ–ã¸
-    if (j.driveDone) {
-      out("  å‹•ç”»ã¯ãƒ‰ãƒ©ã‚¤ãƒ–ã¸ä¿å­˜æ¸ˆã¿ã§ã™");
-    } else {
-      out("  å‹•ç”»ã‚’ãƒ‰ãƒ©ã‚¤ãƒ–ã¸");
-      await sendVideo(
-        z,
-        size,
-        wsToken,
-        () =>
-          openSession(
-            wsToken,
-            "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id",
-            { name: `${when.date}_${title}.mp4`, parents: [j.driveFolderId] },
-            size,
-            "video/mp4",
-          ),
-        j.driveSession,
-        async (session) => {
-          j.driveSession = session;
-          await saveJob(env, j);
-        },
-        out,
-        beat,
-      );
-      j.driveDone = true;
-      await saveJob(env, j);
-    }
-    await set("Driveä¿å­˜æ¸ˆã¿");
-
-    // å‹•ç”»ã‚’ YouTube ã¸
-    if (j.youtubeUrl) {
-      out("  YouTube ã«ã¯ä¸Šã’æ¸ˆã¿ã§ã™");
-    } else {
-      out("  å‹•ç”»ã‚’ YouTube ã¸ï¼ˆé™å®šå…¬é–‹ã§ä¾é ¼ï¼‰");
-      await set("YouTubeæŠ•ç¨¿ä¸­");
-      const yt = await accessToken(env, "youtube");
-      if (!yt.ok) throw new Error(yt.why);
-
-      const video = (await sendVideo(
-        z,
-        size,
-        yt.token,
-        () =>
-          openSession(
-            yt.token,
-            "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
-            {
-              snippet: { title: (row[COL.title] || z.topic || "ç„¡é¡Œ").slice(0, 100), description: "" },
-              /**
-               * 2026-08-20ï¼šã“ã® ãƒãƒ£ãƒ³ãƒãƒ« ã§ã¯ã€ä¸Šã’ãŸã‚ã¨æ‰‹ã§ é™å®šå…¬é–‹ ã«å¤‰ãˆã¦ã‚‚
-               * éå…¬é–‹ã«æˆ»ã•ã‚Œãªã„ã“ã¨ã‚’å®Ÿç‰©ã§ç¢ºèªã—ãŸï¼ˆå›ºå®šã¯æ›ã‹ã£ã¦ã„ãªã„ï¼‰ã€‚
-               * ãã“ã§æœ€åˆã‹ã‚‰ é™å®šå…¬é–‹ ã§é ¼ã‚€ã€‚
-               */
-              status: { privacyStatus: "unlisted", selfDeclaredMadeForKids: false },
-            },
-            size,
-            "video/mp4",
-          ),
-        j.ytSession,
-        async (session) => {
-          j.ytSession = session;
-          await saveJob(env, j);
-        },
-        out,
-        beat,
-      )) as { id?: string; status?: { privacyStatus?: string } };
-
-      if (!video.id) throw new Error("YouTube ãŒå‹•ç”»ã®ç•ªå·ã‚’è¿”ã—ã¾ã›ã‚“");
-      j.youtubeId = video.id;
-      j.youtubeUrl = `https://www.youtube.com/watch?v=${video.id}`;
-      j.privacy = video.status?.privacyStatus ?? "ä¸æ˜";
-      await saveJob(env, j);
-    }
-
-    row[COL.youtube] = j.youtubeUrl as string;
-    const privacy = j.privacy ?? "ä¸æ˜";
-    const jp = privacy === "unlisted" ? "é™å®šå…¬é–‹" : privacy === "private" ? "éå…¬é–‹" : privacy;
-    out(`  YouTube å´ã®å…¬é–‹è¨­å®šï¼š${jp}`);
-
-    // é™å®šå…¬é–‹ã§é ¼ã‚“ã ã®ã«éå…¬é–‹ã«ãªã£ãŸå ´åˆã¯ã€Naoki ãŒæ‰‹ã§ç›´ã›ã‚‹ã‚ˆã†ã«å°ã‚’æ®‹ã™
-    await set("å®Œäº†", jp === "é™å®šå…¬é–‹" ? "" : `YouTube å´ã§ ${jp} ã«ãªã‚Šã¾ã—ãŸã€‚æ‰‹ã§ é™å®šå…¬é–‹ ã«å¤‰ãˆã¦ãã ã•ã„`);
-    out(`  å®Œäº†ï¼š${row[COL.youtube]}`);
-  } catch (e) {
-    const why = e instanceof Error ? e.message : String(e);
-    out(`  ã‚¨ãƒ©ãƒ¼ï¼š${why}`);
-    try {
-      await set("ã‚¨ãƒ©ãƒ¼", why.slice(0, 900));
-    } catch {
-      out("  ã‚·ãƒ¼ãƒˆã¸ã®æ›¸ãæˆ»ã—ã«ã‚‚å¤±æ•—ã—ã¾ã—ãŸ");
-    }
-  }
-}
-
-async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<void>): Promise<void> {
-  const started = Date.now();
-
-  const ws = await accessToken(env, "workspace");
-  if (!ws.ok) {
-    out(`æ­¢ã¾ã‚Šã¾ã—ãŸï¼š${ws.why}`);
-    return;
-  }
-  const sid = await sheetId(env);
-  if (!sid) {
-    out("ã‚·ãƒ¼ãƒˆãŒã¾ã ã‚ã‚Šã¾ã›ã‚“ã€‚/setup/sheet ã‚’é–‹ã„ã¦ä½œã£ã¦ãã ã•ã„ã€‚");
-    return;
-  }
-
-  /**
-   * éŒ ã‚’å–ã‚ŒãŸå®Ÿè¡Œã‹ã‚‰è¦‹ã‚‹ã¨ã€ä»–ã®å®Ÿè¡Œã¯èµ°ã£ã¦ã„ãªã„ã€‚
-   * ã ã‹ã‚‰ã€Œå‡¦ç†ã®é€”ä¸­ã€ã®çŠ¶æ…‹ã®ã¾ã¾æ®‹ã£ã¦ã„ã‚‹è¡Œã¯ã€å¿…ãšå‰ã®å®Ÿè¡ŒãŒè½ã¡ãŸæ®‹ã‚Šã€‚
-   */
-  const rows = await readRows(ws.token, sid);
-  const targets: { no: number; row: string[]; why: string }[] = [];
-  rows.forEach((row, i) => {
-    const share = (row[COL.share] ?? "").trim();
-    const state = (row[COL.state] ?? "").trim();
-    if (!share) return;
-    if (state === "" || state === "æœªå‡¦ç†") targets.push({ no: i + 2, row, why: "æœªå‡¦ç†" });
-    else if (state === "ã‚¨ãƒ©ãƒ¼") targets.push({ no: i + 2, row, why: "å‰ã®ã‚¨ãƒ©ãƒ¼ã‹ã‚‰ã‚„ã‚Šç›´ã—" });
-    else if (MIDWAY.includes(state)) targets.push({ no: i + 2, row, why: `${state} ã®ã¾ã¾æ­¢ã¾ã£ã¦ã„ãŸç¶šã` });
-  });
-
-  out(`é€šã™è¡Œï¼š${targets.length} ä»¶`);
-  out("");
-
-  for (const t of targets) {
-    if (Date.now() - started > RUN_BUDGET_MS) {
-      out(`ã“ã“ã§ä¸€åº¦ç•³ã¿ã¾ã™ï¼ˆ${sec(Date.now() - started)} ç§’ï¼‰ã€‚æ®‹ã‚Šã¯æ¬¡ã®è‡ªå‹•å®Ÿè¡ŒãŒç¶šã‘ã¾ã™ã€‚`);
-      return;
-    }
-    out(`ï¼ˆ${t.why}ï¼‰`);
-    await processRow(env, ws.token, sid, t.no, t.row, out, beat);
-    out("");
-  }
-  try {
-    const managed = await syncManageSheet(env, ws.token, sid);
-    out(
-      `ç®¡ç†ã‚·ãƒ¼ãƒˆï¼š${managed.made ? "ä½œæˆ" : "æ—¢å­˜"}ï¼è¿½åŠ  ${managed.added} ä»¶ï¼æ›´æ–° ${managed.updated} ä»¶ï¼` +
-        `å¤‰æ›´ãªã— ${managed.unchanged} ä»¶ï¼åˆ¥ã®å¹´ ${managed.skippedYear} ä»¶ï¼` +
-        `å…¥ã‚Œå…ˆã‚’æ±ºã‚ã‚‰ã‚Œãªã‹ã£ãŸ ${managed.undecidableDestination} ä»¶ï¼ç©ºããŒç„¡ãã¦å…¥ã‚Œã‚‰ã‚Œãªã‹ã£ãŸ ${managed.noSpace} ä»¶`,
-    );
-  } catch (e) {
-    out(`ç®¡ç†ã‚·ãƒ¼ãƒˆã¸ã®åæ˜ ã«å¤±æ•—ï¼š${e instanceof Error ? e.message : String(e)}`);
-  }
-  try {
-    const content = await syncContentOs(env, ws.token);
-    if (content.missingSettings) {
-      out("ã‚³ãƒ³ãƒ†ãƒ³ãƒ„ãã‚“ã®è¨­å®šå€¤ãŒè¶³ã‚Šãªã„ã®ã§å¯„ã›ã¾ã›ã‚“ã§ã—ãŸ");
-    } else {
-      out(
-        `ã‚³ãƒ³ãƒ†ãƒ³ãƒ„ãã‚“ï¼šä½œã£ãŸ ${content.created} ä»¶ï¼çŠ¶æ…‹ã‚’å†™ã—ãŸ ${content.statusUpdated} ä»¶ï¼` +
-          `å¤‰ã‚ã‚‰ãªã‹ã£ãŸ ${content.unchanged} ä»¶ï¼æ ã‚’ä½œã‚Œãªã‹ã£ãŸ ${content.createFailed} ä»¶ï¼` +
-          `æŠ•ç¨¿ãŒè¦‹ã¤ã‹ã‚‰ãªã‹ã£ãŸ ${content.postNotFound} ä»¶`,
-      );
-    }
-  } catch (e) {
-    out(`ã‚³ãƒ³ãƒ†ãƒ³ãƒ„ãã‚“ã¸ã®åæ˜ ã«å¤±æ•—ï¼š${e instanceof Error ? e.message : String(e)}`);
-  }
-  try {
-    const manabu = await syncManabu(env, ws.token, sid);
-    if (manabu.missingSettings) {
-      out("å­¦ã¶ãã‚“ã®è¨­å®šå€¤ãŒè¶³ã‚Šãªã„ã®ã§å…¥ã‚Œã¾ã›ã‚“ã§ã—ãŸ");
-    } else {
-      out(`å­¦ã¶ãã‚“ï¼šå…¥ã‚ŒãŸ ${manabu.put} ä»¶ï¼å¤±æ•— ${manabu.failed} ä»¶ï¼å‹•ç”»ã®ä½æ‰€ã‚’å¾…ã£ã¦ã„ã‚‹ ${manabu.waitingVideo} ä»¶`);
-    }
-  } catch (e) {
-    out(`å­¦ã¶ãã‚“ã¸ã®åæ˜ ã«å¤±æ•—ï¼š${e instanceof Error ? e.message : String(e)}`);
-  }
-  out("ã“ã“ã¾ã§ã§ã™ã€‚");
-}
-
-/**
- * åŒæ™‚ã«èµ°ã‚‰ãªã„ã‚ˆã†ã«ã™ã‚‹ï¼ˆ5åˆ†ã”ã¨ã®è‡ªå‹•å®Ÿè¡Œã¨æ‰‹å‹•ãŒé‡ãªã‚‰ãªã„ãŸã‚ï¼‰ã€‚
- * éŒ ã¯å‹•ã„ã¦ã„ã‚‹é–“ãšã£ã¨æŠ¼ã—ç›´ã™ã€‚3åˆ†æŠ¼ã•ã‚Œã¦ã„ãªã‘ã‚Œã°ã€å‰ã®å®Ÿè¡Œã¯è½ã¡ãŸã‚‚ã®ã¨ã¿ãªã—ã¦å¼•ãå–ã‚‹ã€‚
- */
-async function withLock(
-  env: Env,
-  fn: (beat: () => Promise<void>) => Promise<void>,
-  out: (s: string) => void,
-): Promise<void> {
-  const held = await env.STORE.get(LOCK_KEY);
-  if (held) {
-    const at = Number(await held.text());
-    if (Date.now() - at < LOCK_STALE_MS) {
-      out("ã„ã¾åˆ¥ã®å‡¦ç†ãŒå‹•ã„ã¦ã„ã¾ã™ã€‚çµ‚ã‚ã‚‹ã¾ã§å¾…ã£ã¦ãã ã•ã„ã€‚");
-      return;
-    }
-    out("å‰ã®å‡¦ç†ãŒè½ã¡ãŸã¾ã¾æ®‹ã£ã¦ã„ãŸã®ã§ã€å¼•ãå–ã‚Šã¾ã™ã€‚");
-  }
-
-  const beat = async () => {
-    await env.STORE.put(LOCK_KEY, String(Date.now()));
-  };
-
-  await beat();
-  try {
-    await fn(beat);
-  } finally {
-    await env.STORE.delete(LOCK_KEY);
-  }
-}
-
-/* ================================================================== */
-/* è¨±å¯                                                                */
-/* ================================================================== */
-
-async function oauthStart(request: Request, env: Env): Promise<Response> {
-  const missing = missingSetup(env);
-  if (missing.length > 0) {
-    return text(
-      ["è¨­å®šãŒè¶³ã‚Šã¾ã›ã‚“ã€‚Cloudflare ã® Settings â†’ Variables and Secrets ã§ Type: Secret ã¨ã—ã¦å…¥ã‚Œã¦ãã ã•ã„ã€‚", "", ...missing.map((m) => "  ãƒ»" + m)].join("\n"),
-      500,
-    );
-  }
-
-  const which = new URL(request.url).searchParams.get("for");
-  if (!isPermitName(which)) {
-    return text(
-      [
-        "è¨±å¯ã¯2å›ã«åˆ†ã‘ã¦å‡ºã—ã¾ã™ã€‚",
-        "",
-        "  1æœ¬ç›®ï¼šãƒ‰ãƒ©ã‚¤ãƒ–ã¸ä¿å­˜ã—ã€ã‚·ãƒ¼ãƒˆã«æ›¸ãæˆ»ã™è¨±å¯",
-        "      ãµã ã‚“ã® Google ã‚¢ã‚«ã‚¦ãƒ³ãƒˆã‚’é¸ã¶",
-        `      ${new URL("/oauth/start?for=workspace", request.url).toString()}`,
-        "",
-        "  2æœ¬ç›®ï¼šYouTube ã¸å‹•ç”»ã‚’ä¸Šã’ã‚‹è¨±å¯",
-        "      ä¸Šã’å…ˆã®ãƒãƒ£ãƒ³ãƒãƒ«ã®ãƒ–ãƒ©ãƒ³ãƒ‰ã‚¢ã‚«ã‚¦ãƒ³ãƒˆã‚’é¸ã¶",
-        `      ${new URL("/oauth/start?for=youtube", request.url).toString()}`,
-      ].join("\n"),
-    );
-  }
-
-  const permit = PERMITS[which];
-  const state = crypto.randomUUID();
-  await env.STORE.put(`auth/state/${state}`, which);
-
-  const auth = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-  auth.searchParams.set("client_id", env.GOOGLE_CLIENT_ID as string);
-  auth.searchParams.set("redirect_uri", new URL("/oauth/callback", request.url).toString());
-  auth.searchParams.set("response_type", "code");
-  auth.searchParams.set("scope", permit.scopes);
-  auth.searchParams.set("access_type", "offline");
-  auth.searchParams.set("prompt", "consent");
-  auth.searchParams.set("state", state);
-  return Response.redirect(auth.toString(), 302);
-}
-
-async function oauthCallback(request: Request, env: Env): Promise<Response> {
-  const url = new URL(request.url);
-  const err = url.searchParams.get("error");
-  if (err) return text(`Google å´ã§è¨±å¯ãŒå‡ºã¾ã›ã‚“ã§ã—ãŸã€‚\n\nç†ç”±ï¼š${err}`, 400);
-
-  const code = url.searchParams.get("code");
-  const state = url.searchParams.get("state");
-  if (!code || !state) return text("è¨±å¯ã®å—ã‘å–ã‚Šã«å¿…è¦ãªå€¤ãŒã‚ã‚Šã¾ã›ã‚“ã€‚", 400);
-
-  const heldObj = await env.STORE.get(`auth/state/${state}`);
-  const held = heldObj ? await heldObj.text() : null;
-  if (!held || !isPermitName(held)) return text("åˆè¨€è‘‰ãŒåˆã„ã¾ã›ã‚“ã€‚/oauth/start ã‹ã‚‰ã‚„ã‚Šç›´ã—ã¦ãã ã•ã„ã€‚", 400);
-  await env.STORE.delete(`auth/state/${state}`);
-  const permit = PERMITS[held];
-
-  const redirectUri = new URL("/oauth/callback", request.url).toString();
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      code,
-      client_id: env.GOOGLE_CLIENT_ID as string,
-      client_secret: env.GOOGLE_CLIENT_SECRET as string,
-      redirect_uri: redirectUri,
-      grant_type: "authorization_code",
-    }),
-  });
-  const body = (await res.json()) as {
-    refresh_token?: string;
-    access_token?: string;
-    id_token?: string;
-    scope?: string;
-    error?: string;
-    error_description?: string;
-  };
-  if (!res.ok) {
-    return text(
-      `Google ã¨ã®å¼•ãæ›ãˆã«å¤±æ•—ã—ã¾ã—ãŸã€‚\n\n${body.error ?? res.status}ï¼${body.error_description ?? "èª¬æ˜ãªã—"}\n\næˆ»ã‚Šå…ˆã®ä½æ‰€ï¼š${redirectUri}`,
-      400,
-    );
-  }
-  if (!body.refresh_token) {
-    return text(
-      "æ›´æ–°ç”¨ã®éµãŒè¿”ã‚Šã¾ã›ã‚“ã§ã—ãŸã€‚\n\nhttps://myaccount.google.com/permissions ã§ zoom-to-youtube ã‚’å–ã‚Šæ¶ˆã—ã¦ã‹ã‚‰ã€ã‚„ã‚Šç›´ã—ã¦ãã ã•ã„ã€‚",
-      400,
-    );
-  }
-
-  const stored: StoredAuth = {
-    refresh_token: body.refresh_token,
-    scope: body.scope ?? "",
-    obtained_at: new Date().toISOString(),
-  };
-  let who: string;
-
-  if (held === "workspace") {
-    const email = (readIdToken(body.id_token ?? "").email ?? "").toLowerCase();
-    if (!email || email !== (env.ALLOWED_EMAIL as string).trim().toLowerCase()) {
-      return text(`ã“ã®ã‚¢ã‚«ã‚¦ãƒ³ãƒˆã®è¨±å¯ã¯å—ã‘ä»˜ã‘ã¾ã›ã‚“ã€‚æ§ãˆã¯ä¿å­˜ã—ã¦ã„ã¾ã›ã‚“ã€‚\n\nå‡ºã—ãŸã‚¢ã‚«ã‚¦ãƒ³ãƒˆï¼š${email || "ï¼ˆä¸æ˜ï¼‰"}`, 403);
-    }
-    stored.email = email;
-    who = email;
-  } else {
-    if (!body.access_token) return text("ä½¿ã„æ¨ã¦ã®éµãŒè¿”ã‚Šã¾ã›ã‚“ã§ã—ãŸã€‚", 400);
-    const chRes = await gFetch(body.access_token, "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true");
-    const raw = await chRes.text();
-    let ch: { id?: string; snippet?: { title?: string } } | undefined;
-    try {
-      ch = (JSON.parse(raw) as { items?: { id?: string; snippet?: { title?: string } }[] }).items?.[0];
-    } catch {
-      /* ä¸‹ã§ raw ã‚’å‡ºã™ */
-    }
-    if (!chRes.ok || !ch?.id) {
-      return text(`ã©ã®ãƒãƒ£ãƒ³ãƒãƒ«ã‹ã‚’ç¢ºã‹ã‚ã‚‰ã‚Œã¾ã›ã‚“ã§ã—ãŸã€‚æ§ãˆã¯ä¿å­˜ã—ã¦ã„ã¾ã›ã‚“ã€‚\n\n${chRes.status}\n${raw.slice(0, 1500)}`, 400);
-    }
-    const prev = await env.STORE.get(permit.key);
-    if (prev) {
-      const before = JSON.parse(await prev.text()) as StoredAuth;
-      if (before.channel_id && before.channel_id !== ch.id) {
-        return text(
-          `å…ˆã«ç™»éŒ²ã—ã¦ã‚ã‚‹ãƒãƒ£ãƒ³ãƒãƒ«ã¨é•ã†ãŸã‚å·®ã—æ›¿ãˆã¾ã›ã‚“ã§ã—ãŸã€‚\n\nç™»éŒ²æ¸ˆã¿ï¼š${before.channel_title}\nä»Šå›ï¼š${ch.snippet?.title}`,
-          409,
-        );
-      }
-    }
-    stored.channel_id = ch.id;
-    stored.channel_title = ch.snippet?.title ?? "";
-    who = `${stored.channel_title}ï¼ˆ${ch.id}ï¼‰`;
-  }
-
-  await env.STORE.put(permit.key, JSON.stringify(stored));
-  const other: PermitName = held === "youtube" ? "workspace" : "youtube";
-  const otherDone = (await env.STORE.head(PERMITS[other].key)) !== null;
-
-  return text(
-    [
-      `ä¿å­˜ã—ã¾ã—ãŸï¼š${permit.label}`,
-      "",
-      `å¯¾è±¡ï¼š${who}`,
-      `ä¿å­˜ã—ãŸæ—¥æ™‚ï¼š${stored.obtained_at}`,
-      "",
-      otherDone
-        ? "2æœ¬ã¨ã‚‚çµ‚ã‚ã‚Šã¾ã—ãŸã€‚ã“ã®ç”»é¢ã¯é–‰ã˜ã¦å¤§ä¸ˆå¤«ã§ã™ã€‚"
-        : `æ®‹ã‚Š1æœ¬ã‚ã‚Šã¾ã™ã€‚\n\n  ${PERMITS[other].label}\n      ${new URL("/oauth/start?for=" + other, request.url).toString()}`,
-    ].join("\n"),
-  );
-}
-
-async function oauthStatus(env: Env): Promise<Response> {
-  const missing = missingSetup(env);
-  const lines = ["--- è¨±å¯ã®çŠ¶æ…‹ ---", "", `è¨­å®šã®3ã¤ã€€${missing.length === 0 ? "ãã‚ã£ã¦ã„ã‚‹" : "è¶³ã‚Šãªã„ï¼š" + missing.join(", ")}`, ""];
-
-  for (const which of ["workspace", "youtube"] as PermitName[]) {
-    lines.push(`â–  ${PERMITS[which].label}`);
-    const obj = await env.STORE.get(PERMITS[which].key);
-    if (!obj) {
-      lines.push(`    æ§ãˆã€€ã€€ã€€ã€€ã¾ã ç„¡ã„ï¼ˆ/oauth/start?for=${which}ï¼‰`);
-      lines.push("");
-      continue;
-    }
-    const saved = JSON.parse(await obj.text()) as StoredAuth;
-    const days = Math.floor((Date.now() - Date.parse(saved.obtained_at)) / 86400000) + 1;
-    lines.push(`    æ§ãˆã€€ã€€ã€€ã€€ã‚ã‚‹ï¼ˆ${saved.obtained_at}ãƒ»å–å¾—ã‹ã‚‰ ${days} æ—¥ç›®ï¼‰`);
-    lines.push(`    å¯¾è±¡ã€€ã€€ã€€ã€€${saved.email ?? saved.channel_title ?? "ï¼ˆä¸æ˜ï¼‰"}`);
-    if (missing.length === 0) {
-      const t = await accessToken(env, which);
-      lines.push(`    ã„ã¾ä½¿ãˆã‚‹ã‹ã€€${t.ok ? "ä½¿ãˆã‚‹" : "ä½¿ãˆãªã„ï¼š" + t.why}`);
-    }
-    lines.push("");
-  }
-
-  lines.push("â–  Zoom æœ¬ä½“ã®å£ï¼ˆåˆ†ã‹ã‚Œã¦ã„ã‚‹éŒ²ç”»ã‚’ã‚¨ãƒ©ãƒ¼ã«ã™ã‚‹ãŸã‚ã«ä½¿ã†ï¼‰");
-  const zm = missingZoom(env);
-  lines.push(`    è¨­å®šã®3ã¤ã€€${zm.length === 0 ? "ãã‚ã£ã¦ã„ã‚‹" : "è¶³ã‚Šãªã„ï¼š" + zm.join(", ")}`);
-  if (zm.length === 0) {
-    try {
-      await zoomToken(env);
-      lines.push("    ã„ã¾ä½¿ãˆã‚‹ã‹ã€€ä½¿ãˆã‚‹");
-    } catch (e) {
-      lines.push(`    ã„ã¾ä½¿ãˆã‚‹ã‹ã€€ä½¿ãˆãªã„ï¼š${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-  lines.push("");
-
-  const sid = await sheetId(env);
-  lines.push("â–  ç®¡ç†ç”¨ã‚·ãƒ¼ãƒˆ");
-  lines.push(sid ? `    https://docs.google.com/spreadsheets/d/${sid}/edit` : "    ã¾ã ç„¡ã„ï¼ˆ/setup/sheet ã§ä½œã‚‹ï¼‰");
-  lines.push("");
-  lines.push("ã“ã®ç”»é¢ã«éµãã®ã‚‚ã®ã¯è¡¨ç¤ºã—ã¾ã›ã‚“ã€‚");
-  return text(lines.join("\n"));
-}
-
-/**
- * å…±æœ‰ãƒªãƒ³ã‚¯ã‚’1æœ¬æ¸¡ã™ã¨ã€æœ¬ä½“ãŒä½•æœ¬ã‚ã‚‹ã‹ã ã‘ã‚’æ•°ãˆã¦è¿”ã™ã€‚
- * ä½•ã‚‚ä¸Šã’ãªã„ã—ã€ã‚·ãƒ¼ãƒˆã«ã‚‚è§¦ã‚‰ãªã„ã€‚åˆ†ã‹ã‚Œã¦ã„ã‚‹ã‹ã®ç¢ºèªã ã‘ã«ä½¿ã†ã€‚
- */
-async function zoomCheck(request: Request, env: Env): Promise<Response> {
-  const share = new URL(request.url).searchParams.get("share");
-  if (!share) {
-    return text("ä½¿ã„æ–¹ï¼š/zoom/check?share=Zoomã®å…±æœ‰ãƒªãƒ³ã‚¯\n\nä½•ã‚‚ä¸Šã’ã¾ã›ã‚“ã€‚æœ¬ä½“ãŒä½•æœ¬ã‚ã‚‹ã‹ã‚’æ•°ãˆã‚‹ã ã‘ã§ã™ã€‚", 400);
-  }
-
-  try {
-    const z = await readZoom(share);
-    const seg = await zoomSegments(env, z.meetingUuid);
-    const lines = [
-      "--- åˆ†ã‹ã‚Œã¦ã„ã‚‹ã‹ã®ç¢ºèª ---",
-      "",
-      `æœ¬ä½“ã®æ•°ã€€ã€€ã€€ã€€${seg.count} æœ¬`,
-      `åˆ¤å®šã€€ã€€ã€€ã€€ã€€ã€€${seg.count >= 2 ? `åˆ†ã‹ã‚Œã¦ã„ã‚‹ï¼ˆã“ã®å…±æœ‰ãƒªãƒ³ã‚¯ã¯é€šã—ã¾ã›ã‚“ï¼‰` : "åˆ†ã‹ã‚Œã¦ã„ãªã„ï¼ˆé€šã›ã¾ã™ï¼‰"}`,
-      "",
-      `é¡Œåã€€ã€€ã€€ã€€ã€€ã€€${z.topic || "ï¼ˆãªã—ï¼‰"}`,
-      `1æœ¬ç›®ã®é•·ã•ã€€ã€€${Math.round(z.durationSec / 60)} åˆ†ï¼ˆ${z.durationSec} ç§’ï¼‰`,
-      `éŒ²ç”»ã®ç•ªå·ã€€ã€€ã€€${z.recId}`,
-      `Zoom ãŒè¿”ã—ãŸæ•°ã€€${seg.files} å€‹ï¼ˆå‹•ç”»ã®ã»ã‹éŸ³å£°ãƒ»ãƒãƒ£ãƒƒãƒˆãƒ»æ–‡å­—èµ·ã“ã—ã‚’å«ã‚€ï¼‰`,
-      "",
-      "1æœ¬ãšã¤ã®å§‹ã¾ã‚Š",
-      ...(seg.starts.length ? seg.starts.map((s, i) => `    ${i + 1} æœ¬ç›®ã€€${s}`) : ["    ï¼ˆæ™‚åˆ»ãŒå–ã‚Œã¾ã›ã‚“ã§ã—ãŸï¼‰"]),
-    ];
-    return text(lines.join("\n"));
-  } catch (e) {
-    return text(`æ•°ãˆã‚‰ã‚Œã¾ã›ã‚“ã§ã—ãŸï¼š${e instanceof Error ? e.message : String(e)}`, 500);
-  }
-}
-
-/* ================================================================== */
-
-function streamed(work: (out: (s: string) => void) => Promise<void>): Response {
-  const { readable, writable } = new TransformStream();
-  const writer = writable.getWriter();
-  const enc = new TextEncoder();
-  const out = (line: string) => {
-    void writer.write(enc.encode(line + "\n"));
-  };
-  void (async () => {
-    try {
-      await work(out);
-    } catch (e) {
-      out("");
-      out("=== é€”ä¸­ã§æ­¢ã¾ã‚Šã¾ã—ãŸ ===");
-      out(String(e instanceof Error ? e.message : e));
-    } finally {
-      await writer.close();
-    }
-  })();
-  return new Response(readable, {
-    headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
-  });
-}
-
-/* ================================================================== */
-/* YouTube ä¸€è¦§ï¼ˆæ•°ãˆã‚‹ã ã‘ãƒ»ä½•ã‚‚ä¸Šã’ãªã„ãƒ»ä½•ã‚‚æ¶ˆã•ãªã„ï¼‰              */
-/* ================================================================== */
-
-type YtItem = { title: string; publishedAt: string; privacy: string; id: string };
-
-/**
- * ãƒ–ãƒ©ãƒ³ãƒ‰ã‚¢ã‚«ã‚¦ãƒ³ãƒˆã®ãƒãƒ£ãƒ³ãƒãƒ«ã«å…¥ã£ã¦ã„ã‚‹å‹•ç”»ã‚’å…¨ä»¶æ•°ãˆã€
- * å…¬é–‹ã®åˆ¥ï¼ˆå…¬é–‹ãƒ»é™å®šå…¬é–‹ãƒ»éå…¬é–‹ï¼‰ã”ã¨ã®æœ¬æ•°ã¨ã€é™å®šå…¬é–‹ã®ä¸€è¦§ã‚’è¿”ã™ã€‚
- * èª­ã¿å–ã‚Šã®è¨±å¯ï¼ˆyoutube.readonlyï¼‰ã ã‘ã‚’ä½¿ã†ã€‚ä¸Šã’ã‚‹ãƒ»æ¶ˆã™ã¯ä¸€åˆ‡ã—ãªã„ã€‚
- */
-async function youtubeList(request: Request, env: Env): Promise<Response> {
-  const url = new URL(request.url);
-  const want = (url.searchParams.get("privacy") ?? "unlisted").toLowerCase();
-
-  const yt = await accessToken(env, "youtube");
-  if (!yt.ok) return text(`ã§ãã¾ã›ã‚“ï¼š${yt.why}`, 400);
-
-  const ch = await gJson<{
-    items?: { id?: string; snippet?: { title?: string }; contentDetails?: { relatedPlaylists?: { uploads?: string } } }[];
-  }>(yt.token, "https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails&mine=true");
-
-  const channel = ch.items?.[0];
-  const uploads = channel?.contentDetails?.relatedPlaylists?.uploads;
-  if (!uploads) return text("ã“ã®ãƒãƒ£ãƒ³ãƒãƒ«ã®å…¥ã‚Œç‰©ãŒè¦‹ã¤ã‹ã‚Šã¾ã›ã‚“ã§ã—ãŸã€‚", 400);
-
-  const ids: string[] = [];
-  let pageToken = "";
-  for (let guard = 0; guard < 100; guard++) {
-    const page = await gJson<{
-      items?: { contentDetails?: { videoId?: string } }[];
-      nextPageToken?: string;
-    }>(
-      yt.token,
-      `https://www.googleapis.com/youtube/v3/playlistItems?part=contentDetails&maxResults=50&playlistId=${encodeURIComponent(uploads)}` +
-        (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""),
-    );
-    for (const it of page.items ?? []) {
-      const v = it.contentDetails?.videoId;
-      if (v) ids.push(v);
-    }
-    if (!page.nextPageToken) break;
-    pageToken = page.nextPageToken;
-  }
-
-  const all: YtItem[] = [];
-  for (let i = 0; i < ids.length; i += 50) {
-    const chunk = ids.slice(i, i + 50);
-    const got = await gJson<{
-      items?: { id?: string; snippet?: { title?: string; publishedAt?: string }; status?: { privacyStatus?: string } }[];
-    }>(yt.token, `https://www.googleapis.com/youtube/v3/videos?part=snippet,status&id=${chunk.join(",")}`);
-    for (const v of got.items ?? []) {
-      all.push({
-        id: v.id ?? "",
-        title: v.snippet?.title ?? "ï¼ˆé¡Œåãªã—ï¼‰",
-        publishedAt: (v.snippet?.publishedAt ?? "").slice(0, 10),
-        privacy: v.status?.privacyStatus ?? "ä¸æ˜",
-      });
-    }
-  }
-
-  const label: Record<string, string> = { public: "å…¬é–‹", unlisted: "é™å®šå…¬é–‹", private: "éå…¬é–‹" };
-  const tally = new Map<string, number>();
-  for (const v of all) tally.set(v.privacy, (tally.get(v.privacy) ?? 0) + 1);
-
-  const lines: string[] = [];
-  lines.push("--- YouTube ã®æœ¬æ•° ---");
-  lines.push("");
-  lines.push(`ãƒãƒ£ãƒ³ãƒãƒ«ã€€ã€€${channel?.snippet?.title ?? "ï¼ˆä¸æ˜ï¼‰"}`);
-  lines.push(`å…¥ã‚Œç‰©ã«å…¥ã£ã¦ã„ã‚‹å…¨ä»¶ã€€ã€€${all.length} æœ¬`);
-  lines.push("");
-  lines.push("å…¬é–‹ã®åˆ¥ã”ã¨ã®æœ¬æ•°");
-  for (const key of ["public", "unlisted", "private"]) {
-    lines.push(`  ${label[key]}ã€€ã€€${tally.get(key) ?? 0} æœ¬`);
-  }
-  for (const [key, n] of tally) {
-    if (!label[key]) lines.push(`  ${key}ã€€ã€€${n} æœ¬`);
-  }
-  lines.push("");
-  lines.push(`--- ${label[want] ?? want} ã®ä¸€è¦§ ---`);
-  lines.push("");
-
-  const picked = all.filter((v) => v.privacy === want);
-  if (picked.length === 0) {
-    lines.push("0 æœ¬");
-  } else {
-    picked.sort((a, b) => (a.publishedAt < b.publishedAt ? -1 : a.publishedAt > b.publishedAt ? 1 : 0));
-    for (const v of picked) {
-      lines.push(`${v.publishedAt}\t${v.title}\thttps://www.youtube.com/watch?v=${v.id}`);
-    }
-  }
-  lines.push("");
-  lines.push("å…¬é–‹ã®åˆ¥ã‚’å¤‰ãˆã‚‹ã¨ãã¯ ?privacy=public / unlisted / private ã‚’ä»˜ã‘ã¾ã™ã€‚");
-  lines.push("ã“ã®å£ã¯æ•°ãˆã‚‹ã ã‘ã§ã™ã€‚ä¸Šã’ã‚‹ãƒ»æ¶ˆã™ãƒ»æ›¸ãæ›ãˆã‚‹ã¯è¡Œã„ã¾ã›ã‚“ã€‚");
-
-  return text(lines.join("\n"));
-}
-
-
-/* ================================================================== */
-/* åŒæ„ç”»é¢ã‹ã‚‰æŒ‡ã™ 2 ã¤ã®æ–‡ç«                                           */
-/* ================================================================== */
-
-/**
- * Google ã®åŒæ„ç”»é¢ã«è¼‰ã›ã‚‹ä½æ‰€ã¨ã—ã¦è¦ã‚‹ã ã‘ã®ã‚‚ã®ã€‚
- * å¤–éƒ¨ã«é…ã‚‹ã‚¢ãƒ—ãƒªã§ã¯ãªãã€Naoki æœ¬äººã—ã‹ä½¿ã‚ãªã„ã®ã§ã€æ›¸ã„ã¦ã‚ã‚‹ã“ã¨ã‚‚å®Ÿæ…‹ãã®ã¾ã¾ã€‚
- */
-const PRIVACY_TEXT = [
-  "zoom-to-youtube ãƒ—ãƒ©ã‚¤ãƒã‚·ãƒ¼ãƒãƒªã‚·ãƒ¼",
-  "æœ€çµ‚æ›´æ–°æ—¥ï¼š2026-08-28",
-  "",
-  "1. ã“ã®ã‚¢ãƒ—ãƒªã«ã¤ã„ã¦",
-  "  æ ªå¼ä¼šç¤¾ BestLifeConsulting ãŒè‡ªç¤¾ã®é‹ç”¨ã®ãŸã‚ã«ä½œã£ãŸé“å…·ã§ã™ã€‚",
-  "  ä¸€èˆ¬ã«é…å¸ƒã—ã¦ãŠã‚‰ãšã€åˆ©ç”¨è€…ã¯é‹å–¶è€…æœ¬äººã ã‘ã§ã™ã€‚",
-  "",
-  "2. æ‰±ã†æƒ…å ±",
-  "  ãƒ»Google ãƒ‰ãƒ©ã‚¤ãƒ–ï¼šã“ã®ã‚¢ãƒ—ãƒªãŒä½œã£ãŸãƒ•ã‚©ãƒ«ãƒ€ã¨ãƒ•ã‚¡ã‚¤ãƒ«ã ã‘ï¼ˆdrive.fileï¼‰",
-  "  ãƒ»Google ã‚¹ãƒ—ãƒ¬ãƒƒãƒ‰ã‚·ãƒ¼ãƒˆï¼šã“ã®ã‚¢ãƒ—ãƒªãŒä½œã£ãŸç®¡ç†ç”¨ã‚·ãƒ¼ãƒˆã ã‘",
-  "  ãƒ»YouTubeï¼šå‹•ç”»ã®æŠ•ç¨¿ã¨ã€ãƒãƒ£ãƒ³ãƒãƒ«ã®æœ¬æ•°ã®èª­ã¿å–ã‚Š",
-  "  ãƒ»Google ã‚¢ã‚«ã‚¦ãƒ³ãƒˆã®ãƒ¡ãƒ¼ãƒ«ã‚¢ãƒ‰ãƒ¬ã‚¹ï¼ˆã©ã®ã‚¢ã‚«ã‚¦ãƒ³ãƒˆã§è¨±å¯ã—ãŸã‹ã®è¡¨ç¤ºã®ãŸã‚ï¼‰",
-  "  ãƒ»Zoom ã®éŒ²ç”»ï¼ˆå‹•ç”»ãƒ»æ–‡å­—èµ·ã“ã—ï¼‰",
-  "",
-  "3. ä½¿ã„é“",
-  "  Zoom ã®éŒ²ç”»ã‚’ Google ãƒ‰ãƒ©ã‚¤ãƒ–ã¸ä¿å­˜ã—ã€YouTube ã¸é™å®šå…¬é–‹ã§ä¸Šã’ã‚‹ã“ã¨ã€‚",
-  "  ãã‚Œä»¥å¤–ã®ç”¨é€”ã«ã¯ä½¿ã„ã¾ã›ã‚“ã€‚",
-  "",
-  "4. ä¿å­˜ã™ã‚‹å ´æ‰€ã¨æœŸé–“",
-  "  Google ã®è¨±å¯ã®æ§ãˆã¨å‡¦ç†ã®é€”ä¸­çµŒéã‚’ã€Cloudflare R2 ã«ä¿å­˜ã—ã¾ã™ã€‚",
-  "  è¨±å¯ã‚’å–ã‚Šæ¶ˆã™ã¨ä½¿ãˆãªããªã‚Šã¾ã™ã€‚ä¸è¦ã«ãªã£ãŸæ™‚ç‚¹ã§æ¶ˆã—ã¾ã™ã€‚",
-  "",
-  "5. å¤–éƒ¨ã¸æ¸¡ã™ã“ã¨",
-  "  ç¬¬ä¸‰è€…ã¸å£²ã£ãŸã‚Šæ¸¡ã—ãŸã‚Šã—ã¾ã›ã‚“ã€‚åºƒå‘Šã«ã‚‚ä½¿ã„ã¾ã›ã‚“ã€‚",
-  "  é€šä¿¡å…ˆã¯ Google ã¨ Zoom ã¨ Cloudflare ã ã‘ã§ã™ã€‚",
-  "",
-  "6. è¨±å¯ã®å–ã‚Šæ¶ˆã—",
-  "  https://myaccount.google.com/permissions ã‹ã‚‰ã„ã¤ã§ã‚‚å–ã‚Šæ¶ˆã›ã¾ã™ã€‚",
-  "",
-  "7. å•ã„åˆã‚ã›å…ˆ",
-  "  gameister1@gmail.com",
-].join("\n");
-
-const TERMS_TEXT = [
-  "zoom-to-youtube åˆ©ç”¨è¦ç´„",
-  "æœ€çµ‚æ›´æ–°æ—¥ï¼š2026-08-28",
-  "",
-  "1. é©ç”¨",
-  "  ã“ã®è¦ç´„ã¯ã€æ ªå¼ä¼šç¤¾ BestLifeConsulting ãŒé‹ç”¨ã™ã‚‹ zoom-to-youtube ã«é©ç”¨ã—ã¾ã™ã€‚",
-  "",
-  "2. ä½¿ãˆã‚‹äºº",
-  "  é‹å–¶è€…ãŒè¨±å¯ã—ãŸã‚¢ã‚«ã‚¦ãƒ³ãƒˆã ã‘ã§ã™ã€‚ä¸€èˆ¬ã«ã¯å…¬é–‹ã—ã¦ã„ã¾ã›ã‚“ã€‚",
-  "",
-  "3. ã§ãã‚‹ã“ã¨",
-  "  Zoom ã®éŒ²ç”»ã‚’ Google ãƒ‰ãƒ©ã‚¤ãƒ–ã¸ä¿å­˜ã—ã€YouTube ã¸ä¸Šã’ã‚‹ã“ã¨ã ã‘ã§ã™ã€‚",
-  "",
-  "4. ã—ã¦ã¯ã„ã‘ãªã„ã“ã¨",
-  "  ãƒ»æ¨©åˆ©ã‚’æŒãŸãªã„éŒ²ç”»ã‚’é€šã™ã“ã¨",
-  "  ãƒ»æ³•ä»¤ã«åã™ã‚‹ä½¿ã„æ–¹",
-  "  ãƒ»ä»•çµ„ã¿ã¸éå¤§ãªè² è·ã‚’ã‹ã‘ã‚‹ã“ã¨",
-  "",
-  "5. æ­¢ã‚ã‚‹ã“ã¨ãƒ»å¤‰ãˆã‚‹ã“ã¨",
-  "  äºˆå‘Šãªãå†…å®¹ã‚’å¤‰ãˆãŸã‚Šã€æä¾›ã‚’æ­¢ã‚ãŸã‚Šã™ã‚‹ã“ã¨ãŒã‚ã‚Šã¾ã™ã€‚",
-  "",
-  "6. è²¬ä»»ã®ç¯„å›²",
-  "  è‡ªç¤¾ã®é‹ç”¨ã®ãŸã‚ã®é“å…·ã§ã‚ã‚Šã€ä½¿ã£ãŸã“ã¨ã§ç”Ÿã˜ãŸæå®³ã«ã¤ã„ã¦è²¬ä»»ã‚’è² ã„ã¾ã›ã‚“ã€‚",
-  "",
-  "7. å•ã„åˆã‚ã›å…ˆ",
-  "  gameister1@gmail.com",
-].join("\n");
-
-export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
-
-    switch (url.pathname) {
-      case "/":
-        return text(
-          [
-            "zoom-to-youtube",
-            "",
-            "  /setup/sheet   ç®¡ç†ç”¨ã‚·ãƒ¼ãƒˆã‚’ä½œã‚‹ï¼ˆã™ã§ã«ã‚ã‚Œã°ä½œã‚‰ãªã„ï¼‰",
-            "  /run           ã‚·ãƒ¼ãƒˆã®æœªå‡¦ç†ã®è¡Œã‚’é€šã™",
-            "  /manage/status ç®¡ç†ã‚·ãƒ¼ãƒˆã®çŠ¶æ…‹ã‚’è¦‹ã‚‹ï¼ˆä½•ã‚‚ä½œã‚‰ãªã„ãƒ»ä½•ã‚‚æ›¸ã‹ãªã„ï¼‰",
-            "  /oauth/status  è¨±å¯ã¨ã‚·ãƒ¼ãƒˆã®çŠ¶æ…‹ã‚’è¦‹ã‚‹",
-            "  /oauth/start   è¨±å¯ã‚’é€šã™ï¼ˆ2æœ¬ï¼‰",
-            "  /zoom/check    å…±æœ‰ãƒªãƒ³ã‚¯ãŒåˆ†ã‹ã‚Œã¦ã„ãªã„ã‹ã‚’æ•°ãˆã‚‹ï¼ˆä½•ã‚‚ä¸Šã’ãªã„ï¼‰",
-            "  /privacy       ãƒ—ãƒ©ã‚¤ãƒã‚·ãƒ¼ãƒãƒªã‚·ãƒ¼",
-            "  /terms         åˆ©ç”¨è¦ç´„",
-            "  /youtube/list  ãƒãƒ£ãƒ³ãƒãƒ«ã®æœ¬æ•°ã‚’å…¬é–‹ã®åˆ¥ã”ã¨ã«æ•°ãˆã‚‹ï¼ˆä½•ã‚‚ä¸Šã’ãªã„ï¼‰",
-          ].join("\n"),
-        );
-
-      case "/privacy":
-        return text(PRIVACY_TEXT);
-
-      case "/terms":
-        return text(TERMS_TEXT);
-
-      case "/zoom/check":
-        return zoomCheck(request, env);
-
-      case "/youtube/list":
-        return youtubeList(request, env);
-
-      case "/oauth/start":
-        return oauthStart(request, env);
-      case "/oauth/callback":
-        return oauthCallback(request, env);
-      case "/oauth/status":
-        return oauthStatus(env);
-
-      case "/manage/status": {
-        const ws = await accessToken(env, "workspace");
-        if (!ws.ok) return text(`ã§ãã¾ã›ã‚“ï¼š${ws.why}`, 400);
-        const sid = await sheetId(env);
-        if (!sid) return text("å—ã‘ä»˜ã‘ã®å°å¸³ãŒã¾ã ã‚ã‚Šã¾ã›ã‚“ã€‚", 400);
-        try {
-          return text(await manageStatus(env, ws.token, sid));
-        } catch (e) {
-          return text(`ç®¡ç†ã‚·ãƒ¼ãƒˆã®çŠ¶æ…‹ã‚’èª­ã‚ã¾ã›ã‚“ã§ã—ãŸï¼š${e instanceof Error ? e.message : String(e)}`, 500);
-        }
-      }
-
-      case "/manage/reapply": {
-        const ws = await accessToken(env, "workspace");
-        if (!ws.ok) return text(`ã§ãã¾ã›ã‚“ï¼š${ws.why}`, 400);
-        try {
-          const result = await reapplyFormats(env, ws.token);
-          return text(`è¦‹å‡ºã—ã¨å…¥åŠ›è¦å‰‡ã‚’å½“ã¦ç›´ã—ã¾ã—ãŸã€‚\n\nã‚¿ãƒ–ã®æ•°ï¼š${result.tabs}\n${result.url}`);
-        } catch (e) {
-          return text(`å½“ã¦ç›´ã›ã¾ã›ã‚“ã§ã—ãŸï¼š${e instanceof Error ? e.message : String(e)}`, 500);
-        }
-      }
-
-      case "/setup/sheet": {
-        const ws = await accessToken(env, "workspace");
-        if (!ws.ok) return text(`ã§ãã¾ã›ã‚“ï¼š${ws.why}`, 400);
-        const s = await makeSheet(env, ws.token);
-        return text(
-          [
-            s.made ? "ç®¡ç†ç”¨ã‚·ãƒ¼ãƒˆã‚’ä½œã‚Šã¾ã—ãŸã€‚" : "ç®¡ç†ç”¨ã‚·ãƒ¼ãƒˆã¯ã™ã§ã«ã‚ã‚Šã¾ã™ã€‚",
-            "",
-            s.url,
-            "",
-            "ä½¿ã„æ–¹ï¼š2åˆ—ç›®ã® Zoomå…±æœ‰URL ã¨ 3åˆ—ç›®ã® è¬›ç¾©ã‚¿ã‚¤ãƒˆãƒ« ã ã‘å…¥ã‚Œã¦ãã ã•ã„ã€‚",
-            "æ®‹ã‚Šã¯è‡ªå‹•ã§å…¥ã‚Šã¾ã™ã€‚5åˆ†ã”ã¨ã«è¦‹ã«è¡Œãã¾ã™ã€‚",
-          ].join("\n"),
-        );
-      }
-
-      case "/run":
-        return streamed((out) => withLock(env, (beat) => runAll(env, out, beat), out));
-
-      default:
-        return text("è¦‹ã¤ã‹ã‚Šã¾ã›ã‚“", 404);
-    }
-  },
-
-  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    const log: string[] = [];
-    ctx.waitUntil(
-      withLock(env, (beat) => runAll(env, (line) => log.push(line), beat), (line) => log.push(line)).then(() =>
-        console.log(log.join("\n")),
-      ),
-    );
-  },
-};
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíÛn´Õ:-jZ.¶›­–)Ş³Rò¢ ¢¢¦ööÒ×Fò×–÷WGV&RòzÊÃ.x˜ûÈƒ##bÓ’Ó‚™h¾y›®˜:8;¾8+>8;>88n8;>88N8ş8)>8{˜¾8ûÈ¢ ¢¢zÊÃx˜8~‹k>8~8ş8>8€¢¢÷&—f7’8‚÷FW&×28â"8N8).‹k>8~8ş8.KŠŞ‹ª¾8òyK¾™Ú.8n8)>8îih~zº888~8¢¢K¹^{XN8ş8îX¹^8Ş8ò8N8(.ZH8(ş8>8n8N8®8N8 ¢¢ynyKûÉ¤vöövÆR8îŠ‹Xúş8Âriz^8~Xˆ~8(Î8n8N8ş8î8ş8YÎhHşyK¾™Ú.8Î8Î88n8+88KŠŞ8Ş8î8î8î88>8ş8ş8(¢¢ûÈƒ##bÓ‚Ó#‚8²vöövÆR8îŠªÎiˆî8~z+®Š¨ŞûÈ8.8ÎiÊÎyZ®8Ş8z{¾88¾8şYÎhHşyK¾™Ú.8à¢¢89¾8;Î8:89®8;Î8+8;¾89~8:8*N898+~8;Â89Ş8:®8+~8;Î8;¾XŠyJŠhş{HN8â28N8îKØşh˜8ÎŠh8(®8¢¢8Ş8îKØşh˜8şh›şŠ¨Şkˆ8ş888:8*N8;>ûÈ†vÖV—7FW#çv÷&¶W'2æFWnûÈ8îKˆ¾8~8®88(Î88®8(8®8N8 ¢¢{Úî8ŞZN8).ik8~8şKÙÎ8(8®88>8âv÷&¶W"8²"8N‹k>88î8Î8N888)26†÷'B8N˜>88>8ş8 ¢ ¢¢x˜8î[^jÛN8îk:hHşûÉ®zÊÃnx˜ûÈih~ZÙ~‹[~8>8~8îŠªŞ8(8(¾x˜ûÈ8~8ş88>8îŠh¾X{®8~8ÎzÊÃ^x˜8î8î8à¢¢jè¾8>8n8N8ş8.x˜8).Kˆ®8.8(¾88Ş8ş[ø^8®8>8îŠÎ8(.y»N88>88 ¢ ¢¢8~8Ş8(¾8>8€¢¢÷6WGW÷6†VWBzêynyJ8+89~8:Î88>888+~8;Î888)#ié®KÙÎ8(¾ûÈ88~8¾8.8(Î8KÙÎ8(8®8NûÈ¢¢÷'Vâ8+~8;Î888).Šh¾8n8˜	®888ŞŠÎ8)#iÊÎ8®8N˜.8(8(¾ûÈ˜	NKŠŞ{XÎ˜î8ÎX{®8(¾ûÈ¢¢ööWF‚ò¢vöövÆR8îŠ‹XúşûÈƒ.iÊÎûÈ¢¢^Xˆn8N88îˆz®X¹^ZéşŠÎûÈYÎ8Xznyn8).™Ù8¾8¾X¹^8¾8ûÈ¢ ¢¢X¹^yK¾8î˜¾8>ik¢¢¦ööÒ8¾8(’‚Ô"8®8NŠªŞ8)>8~88Ş8î8î8âvöövÆR8kŠ88.XZKÙ>8).k©Î8(‹ëÎ8î8®8N8î8p¢¢8:8:.8:®8îiêûÈƒ#‚Ô.ûÈ8¾Šzn8(Î8®8N8%¦ööÒ8ş˜	NKŠŞ8¾8(8îŠªŞ8şX{®8~8¾Zûî[ùÎ8~8n8N8(¾8 ¢ ¢¢zÊÃ^x˜8~‹k>8~8ş8>8ûÈjë^™¨â>ûÈ¢¢â˜	NKŠŞ{XÎ˜î8).˜Ë.yK¾8N88²#"8jè¾8ûÈ†¦ö"ò8îKˆ¾ûÈ8#‚Ô"˜.8(8ş8>8¾i»8Şy»N8¢¢"â˜	NKŠŞ8~Xˆ~8(Î8şŠÎ888*8:8;Î8¾8®8>8şŠÎ8).8jÊ8îZéşŠÎ8Îˆz®X¹^8~h»î8Ny»N8~8n{i®8Ş8¾8(˜.8(8(°¢¢2â88~8²–÷UGV&R8Kˆ®8Î8>8n8N8(¾˜Ë.yK¾8ş8K¨Î[ªn8Kˆ®8.8®8@¢¢Bâ˜Ê8şX¹^8N8n8N8(¾™i>8®8>8h«Î8~y»N88#>Xˆnh«Î8^8(Î8n8N8®88(Î88X˜Ş8îZéşŠÎ8ş‰Ş88ş8(.8î88ş8®8¢¢RâY¹î8îZéşŠÎ8óXˆn8~ˆz®Xˆn8¾8(y[>8(8.jè¾8(®8şjÊ8îˆz®X¹^ZéşŠÎ8Î{i®88(°¢ ¢¢zÊÃ~x˜8~‹k>8~8ş8>88;¾y»N8~8ş8>8€¢¢â8	y»N8~8	˜	NKŠŞ{XÎ˜î8îhê~88îYŞX˜Ş8).8ÎXhŞyIşyZ®Xû~8Ş8¾8(8Î˜Ë.yK¾8Ş8î8(.8î8îyZ®Xû~8Ş8¾ZH88ş8 ¢¢XhŞyIşyZ®Xû~8şYÎ8X[iÈ8:®8;>8*ş8~8(.jøîY¹îZH8(ş8(¾8ş8(ûÈƒ##bÓ‚Ó#28¾YÎ8˜Ë.yK¾8ƒ>Y¹î8;°¢¢XŠ^8î˜Ë.yK¾8ƒY¹î8.8ş8>8nZéşkŠÎûÈ8hê~88ÎK¨Î[ªn8Šh¾8N8¾8(8®8zÊÃ^x˜8;¾zÊÃnx˜8~8ğ¢¢˜	NKŠŞ8¾8(8îXhŞ™h¾8(.K¨Î˜xŞh©^z‹ş8î™‹.jÚ.8(.8î8>8ş8şX«8N8n8N8®8¾8>8ş8 ¢¢"â8	‹ûŞXª8	Xˆn8¾8(Î8n8N8(¾˜Ë.yK¾8).8*8:8;Î8¾88(¾ûÈ{X.8(ş8(®8îiÚK»cNûÈ8%¦ööÒ8îX[iÈ8:®8;>8*ş8à¢¢‹ùN8(®8¾8şiÊÎi[8).zK®8jÈN8ÎxJ8N8î8~ûÈƒs.š^yºî8)#iÊÎ8î˜Ë.yK¾8ãsš^yºî8z¨8ŞY8(ş8¾8nz+®Š¨ŞûÈ8¢¢¦ööÒiÊÎKÙ>8îXú>8¾KÉ®ŠÛ8îyZ®Xû~8~YXş8NY8(ş8¾8iÊÎKÙ>8îi[8).i[88(¾8 ¢¢2â8	‹ûŞXª8	÷¦ööÒö6†V6¾8X[iÈ8:®8;>8*ş8)#iÊÎkŠ888iÊÎi[888).i[88n‹ùN88.KÙ^8(.Kˆ®8.8®8N8 ¢ ¢¢jè¾8(¾™™yXÎûÈXˆn8¾8>8ş8n88~88Ş8î8î8î8¾8~8n8.8(¾ûÈ¢¢vöövÆR8î˜Û^8ói˜.™i>8~Xˆ~8(Î8(¾8#iÊÎ8î˜8(®X{®8~8Ãi˜.™i>8).‹h^88(¾8˜	NKŠŞ8~jÚ.8î8(¾8Î8¢¢8Ş8>8î8~8î˜.8şX[~Y8şjè¾8>8n8N8(¾8î8~8jÊ8îZéşŠÎ8Î{i®8Ş8¾8(˜.8(8(¾8 ¢¢Xˆn8¾8(Î8ş˜Ë.yK¾8).XZ˜:Kˆ®8.8(¾8>8ûÈ{X.8(ş8(®8îiÚK»c^ûÈ8şKÙÎ8>8n8N8®8N8#B8~8*8:8;Î8¾8®8(¾8î8~8¢¢æö¶’8ÎŠÎ8).Xˆn88n‹+Î8(®y»N88 ¢¢ğ ¦–×÷'B²ÖævU7FGW2Â&VÇ”f÷&ÖG2Â7–æ46öçFVçD÷2Â7–æ4Öæ'RÂ7–æ4ÖævU6†VWBÒg&öÒ"âöÖævR#° ¦–çFW&f6RVçb°¢5Dõ$S¢#$'V6¶WC°¢tôôtÄUô4Ä”TåEô”Có¢7G&–æs°¢tôôtÄUô4Ä”TåEõ4T5$UCó¢7G&–æs°¢ÄÄõtTEôTÔ”Ãó¢7G&–æs°¢ò¢¢¦ööÒiÊÎKÙ>8îXú>8¾YXş8NY8(ş8¾8(¾8ş8(8ã>8NûÈ…6W'fW"×FòÕ6W'fW"ôWFûÈ’¢ğ¢¤ôôÕô44õTåEô”Có¢7G&–æs°¢¤ôôÕô4Ä”TåEô”Có¢7G&–æs°¢¤ôôÕô4Ä”TåEõ4T5$UCó¢7G&–æs°¢4ôåDTåEôõ5ô•ô$4Só¢7G&–æs°¢4ôåDTåEôõ5ô”åDU$äÅõ4T5$UCó¢7G&–æs°¢4ôåDTåEôõ5õU4U%ô”Có¢7G&–æs°¢4ôåDTåEôõ5ô44õTåEô”Có¢7G&–æs°¢Ôä%UõUEõ4TÔ”ä%õU$Ãó¢7G&–æs°¢Ôä%UõUEõ4TÔ”ä%õ4T5$UCó¢7G&–æs°§Ğ ¦6öç7BTĞ¢$Ö÷¦–ÆÆóRã„Ö6–çF÷6ƒ²–çFVÂÖ2õ2‚óUór’ÆUvV$¶—BóS3rã3b"°¢"„´…DÔÂÂÆ–¶RvV6¶ò’6‡&öÖRó#bã6f&’óS3rã3b#°¦6öç7B¤ôôÕô$4RÒ&‡GG3¢ò÷W3'vV"ç¦ööÒçW2#° ¢ò¢¢¦ööÒiÊÎKÙ>8îXú>ûÈX[iÈ8:®8;>8*ş8îXN8~8ş8®8ş88*.8*¾8*n8;>888îhÈ8xš88~8n˜Ë.yK¾8).Šh¾8(¾XNûÈ’¢ğ¦6öç7B¤ôôÕõDô´TåõU$ÂÒ&‡GG3¢ò÷¦ööÒçW2ööWF‚÷Fö¶Vâ#°¦6öç7B¤ôôÕô’Ò&‡GG3¢òö’ç¦ööÒçW2÷c"#°¦6öç7B4…Tä²Ò‚¢#B¢#C°¦6öç7B$ôõEôdôÄDU"Ò.ŠÉ¾{ê8+>8;>88n8;>88B#°¦6öç7B4„TUEô´U’Ò&6öæf–r÷6†VWBæ§6öâ#°¦6öç7BÄô4µô´U’Ò''VâöÆö6²#°¦6öç7B¤ô%õ$Td•‚Ò&¦ö"ò#° ¢ò¢¢˜Ê8Î8>8îi˜.™i>88h«Î8~y»N8^8(Î8n8N8®88(Î88X˜Ş8îZéşŠÎ8ş‰Ş88ş8(.8î88ş8®8’¢ğ¦6öç7BÄô4µõ5DÄUôÕ2Ò2¢c¢° ¢ò¢¢Y¹î8îZéşŠÎ8ş8>8îi˜.™i>8~ˆz®Xˆn8¾8(y[>8(ûÈjè¾8(®8şjÊ8îˆz®X¹^ZéşŠÎ8Î{i®88(¾ûÈ’¢ğ¦6öç7B%Tåô%TDtUEôÕ2Ò¢c¢° ¢ò¢¢Xznyn8î˜	NKŠŞ8).Š8x«nhX¾8.8>8îx«nhX¾8î8î8îjè¾8>8n8N8(¾ŠÎ8ş8X˜Ş8îZéşŠÎ8Î‰Ş88şjè¾8(¢¢ğ¦6öç7BÔ”Et“¢7G&–æuµÒÒ²%¦ööŞXùn[é~KŠÒ"Â$G&—f^KùŞZÙkˆ8ò"Â%–÷UGV&^h©^z‹şKŠÒ%Ó° ¦6öç7B„TDU%2Ò°¢.Xznyd”B"À¢%¦ööŞX[iÈ•U$Â"À¢.ŠÉ¾{ê8+ş8*N888:²"À¢.Xøî˜Ë.izR"À¢$G&—f^89^8*8:¾88U$Â"À¢%–÷UGV&RU$Â"À¢.Xznynx«nhX²"À¢.8*8:8;ÎXh^Zë’"À¢.iÈ{X.i»Nikiz^i˜""À¥Ò26öç7C° ¦6öç7B4ôÂÒ°¢–C¢À¢6†&S¢À¢F—FÆS¢"À¢FFS¢2À¢G&—fS¢BÀ¢–÷WGV&S¢RÀ¢7FFS¢bÀ¢W'&÷#¢rÀ¢WFFVC¢‚À§Ò26öç7C° ¦6öç7BU$Ô•E2Ò°¢–÷WGV&S¢°¢Æ&VÃ¢%–÷UGV&R8X¹^yK¾8).Kˆ®8.8(¾Š‹XúşûÈ89n8:8;>888*.8*¾8*n8;>888~˜	®8ûÈ’"À¢¶W“¢&WF‚÷–÷WGV&Ræ§6öâ"À¢66÷W3¢°¢&‡GG3¢ò÷wwrævöövÆV—2æ6öÒöWF‚÷–÷WGV&RçWÆöB"À¢&‡GG3¢ò÷wwrævöövÆV—2æ6öÒöWF‚÷–÷WGV&Rç&VFöæÇ’"À¢Òæ¦ö–â‚""’À¢ÒÀ¢v÷&·76S¢°¢Æ&VÃ¢.888:8*N89n8KùŞZÙ8~88+~8;Î888¾i»8Şh‹¾8Š‹XúşûÈ8^88)>8âvöövÆR8*.8*¾8*n8;>888~˜	®8ûÈ’"À¢¶W“¢&WF‚÷v÷&·76Ræ§6öâ"À¢66÷W3¢°¢&‡GG3¢ò÷wwrævöövÆV—2æ6öÒöWF‚öG&—fRæf–ÆR"À¢&‡GG3¢ò÷wwrævöövÆV—2æ6öÒöWF‚÷7&VG6†VWG2"À¢&÷Væ–B"À¢&VÖ–Â"À¢Òæ¦ö–â‚""’À¢ÒÀ§Ò26öç7C° §G—RW&Ö—DæÖRÒ¶W–öbG—VöbU$Ô•E3° ¦gVæ7F–öâ—5W&Ö—DæÖR‡c¢7G&–ærÂçVÆÂ“¢b—2W&Ö—DæÖR°¢&WGW&âbÓÓÒ'–÷WGV&R"ÇÂbÓÓÒ'v÷&·76R#°§Ğ ¦–çFW&f6R7F÷&VDWF‚°¢&Vg&W6…÷Fö¶Vã¢7G&–æs°¢66÷S¢7G&–æs°¢ö'F–æVEöC¢7G&–æs°¢VÖ–Ãó¢7G&–æs°¢6†ææVÅö–Có¢7G&–æs°¢6†ææVÅ÷F—FÆSó¢7G&–æs°§Ğ ¢ò¢ ¢¢iÊÎ8n8)>8î˜	NKŠŞ{XÎ˜î8.˜Ë.yK¾8N88³8N8#"8¾jè¾88 ¢ ¢¢&V4–B8ş8Î˜Ë.yK¾8Ş8î8(.8î8îyZ®Xû~8Ş8.zÊÃnx˜8î8~8ş8ÎXhŞyIşyZ®Xû~8Ş8).KÛş8>8n8N8ş8Î8¢¢8.8(Î8şYÎ8X[iÈ8:®8;>8*ş8~8(.8*.8*ş8+¾8+8î8ş8>8¾ZH8(ş8(¾8ş8(8hê~88ÎK¨Î[ªn8Šh¾8N8¾8(8®8¾8>8ş8 ¢¢&V4–B8şYÎ8˜Ë.yK¾8®8(KÙ^[ªnXùn8>8n8(.YÎ88~8XŠ^8î˜Ë.yK¾8~8şXŠ^8¾8®8(¾ûÈƒ##bÓ‚Ó#2ZéşkŠÎûÈ8 ¢¢ğ¦–çFW&f6R¦ö"°¢&V4–C¢7G&–æs°¢6†&S¢7G&–æs°¢&÷tæó¢çVÖ&W#°¢F—FÆS¢7G&–æs°¢FFS¢7G&–æs°¢6—¦S¢çVÖ&W#°¢G&—fTföÆFW$–Có¢7G&–æs°¢G&—fTföÆFW%W&Ãó¢7G&–æs°¢G&ç67&—DFöæSó¢&ööÆVã°¢ò¢¢ŠªŞ8(8(¾x˜ûÈ„vöövÆR888*Ş8:^8:8;>88ûÈ8).KÙÎ8(®{X.88ş8²¢ğ¢G&ç67&—DFö4FöæSó¢&ööÆVã°¢G&—fU6W76–öãó¢7G&–æs°¢G&—fTFöæSó¢&ööÆVã°¢—E6W76–öãó¢7G&–æs°¢–÷WGV&T–Có¢7G&–æs°¢–÷WGV&UW&Ãó¢7G&–æs°¢&—f7“ó¢7G&–æs°¢WFFVDC¢7G&–æs°§Ğ ¢ò¢¢Xù~8Xú>8ÎiÉş™™Xˆ~8(Î8¾8®8>8ş88Ş8¾h©^8.8(²¢ğ¦6Æ726W76–öävöæRW‡FVæG2W'&÷"·Ğ ¦gVæ7F–öâ¦ö$¶W’‡&V4–C¢7G&–ær“¢7G&–ær°¢&WGW&â¤ô%õ$Td•‚²&V4–Bç&WÆ6R‚õµäÕ¦×£Ó’åòÕÒörÂ%ò"’²"æ§6öâ#°§Ğ ¦7–æ2gVæ7F–öâÆöD¦ö"†Vçc¢VçbÂ&V4–C¢7G&–ær“¢&öÖ—6SÄ¦ö"ÂçVÆÃâ°¢6öç7BòÒv—BVçbå5Dõ$RævWB†¦ö$¶W’‡&V4–B’“°¢–b‚ò’&WGW&âçVÆÃ°¢&WGW&â¥4ôâç'6R†v—BòçFW‡B‚’’2¦ö#°§Ğ ¦7–æ2gVæ7F–öâ6fT¦ö"†Vçc¢VçbÂ¦ö#¢¦ö"“¢&öÖ—6SÇfö–Câ°¢¦ö"çWFFVDBÒæWrFFR‚’çFô•4õ7G&–ær‚“°¢v—BVçbå5Dõ$RçWB†¦ö$¶W’†¦ö"ç&V4–B’Â¥4ôâç7G&–æv–g’†¦ö"’“°§Ğ ¢ò¢ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÒ¢ğ¢ò¢[şxš’¢ğ¢ò¢ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÒ¢ğ ¦gVæ7F–öâFW‡B†&öG“¢7G&–ærÂ7FGW2Ò#“¢&W7öç6R°¢&WGW&âæWr&W7öç6R†&öG’Â°¢7FGW2À¢†VFW'3¢²&6öçFVçB×G—R#¢'FW‡B÷Æ–ã²6†'6WC×WFbÓ‚"Â&66†RÖ6öçG&öÂ#¢&æò×7F÷&R"ÒÀ¢Ò“°§Ğ ¦6öç7B6V2Ò†×3¢çVÖ&W"’Óâ†×2ò’çFôf—†VBƒ“°¦6öç7BÖ"Ò†#¢çVÖ&W"’Óâ†"ò#Bò#B’çFôf—†VBƒ“° ¦gVæ7F–öâ&VD–EFö¶Vâ†–EFö¶Vã¢7G&–ær“¢²VÖ–Ãó¢7G&–ærÒ°¢6öç7B'BÒ–EFö¶Vâç7Æ—B‚"â"•³Ó°¢–b‚'B’&WGW&â·Ó°¢6öç7B#cBÒ'Bç&WÆ6R‚òÒörÂ"²"’ç&WÆ6R‚õòörÂ"ò"“°¢6öç7B&–âÒFö"†#cB²#Ò"ç&WVB‚ƒBÒ†#cBæÆVæwF‚RB’’RB’“°¢&WGW&â¥4ôâç'6R†æWrFW‡DFV6öFW"‚’æFV6öFR…V–çC„'&’æg&öÒ†&–âÂ†2’Óâ2æ6†$6öFTBƒ’’’“°§Ğ ¦gVæ7F–öâÖ—76–æu6WGW†Vçc¢Vçb“¢7G&–æuµÒ°¢6öç7BÓ¢7G&–æuµÒÒµÓ°¢–b‚VçbätôôtÄUô4Ä”TåEô”B’ÒçW6‚‚$tôôtÄUô4Ä”TåEô”B"“°¢–b‚VçbätôôtÄUô4Ä”TåEõ4T5$UB’ÒçW6‚‚$tôôtÄUô4Ä”TåEõ4T5$UB"“°¢–b‚VçbäÄÄõtTEôTÔ”Â’ÒçW6‚‚$ÄÄõtTEôTÔ”Â"“°¢&WGW&âÓ°§Ğ ¢ò¢¢¦ööÒiÊÎKÙ>8îXú>8).KÛş8n8ş8(8ã>8N8.X
+N8Ş8î8(.8î8ş88îyK¾™Ú.8¾8(.X{®8^8®8B¢ğ¦gVæ7F–öâÖ—76–æu¦ööÒ†Vçc¢Vçb“¢7G&–æuµÒ°¢6öç7BÓ¢7G&–æuµÒÒµÓ°¢–b‚Vçbå¤ôôÕô44õTåEô”B’ÒçW6‚‚%¤ôôÕô44õTåEô”B"“°¢–b‚Vçbå¤ôôÕô4Ä”TåEô”B’ÒçW6‚‚%¤ôôÕô4Ä”TåEô”B"“°¢–b‚Vçbå¤ôôÕô4Ä”TåEõ4T5$UB’ÒçW6‚‚%¤ôôÕô4Ä”TåEõ4T5$UB"“°¢&WGW&âÓ°§Ğ ¢ò¢¢iz^iÊÎi˜.™i>8î[›NiÈiz^8¾88(²¢ğ¦gVæ7F–öâ§7B†×5WF3¢çVÖ&W"“¢²FFS¢7G&–æs²–V#¢7G&–æs²–Ó¢7G&–ærÒ°¢6öç7BBÒæWrFFR†×5WF2²’¢c¢c¢“°¢6öç7B’ÒBævWEUD4gVÆÅ–V"‚’çFõ7G&–ær‚“°¢6öç7BÒÒ7G&–ær†BævWEUD4ÖöçF‚‚’²’çE7F'Bƒ"Â#"“°¢6öç7BF’Ò7G&–ær†BævWEUD4FFR‚’’çE7F'Bƒ"Â#"“°¢&WGW&â²FFS¢G·—ÒÒG¶×ÒÒG¶F—ÖÂ–V#¢’Â–Ó¢G·—ÒG¶×ÖÓ°§Ğ ¢ò¢¢vöövÆR888:8*N89n8î89^8*8:¾88YŞ8¾KÛş88®8Nih~ZÙ~8).‰Ş88’¢ğ¦gVæ7F–öâ6fTæÖR‡3¢7G&–ær“¢7G&–ær°¢&WGW&â2ç&WÆ6R‚õµÅÂó¢£ò#ÃçÅÒörÂ%ò"’ç&WÆ6R‚õÇ2²örÂ""’çG&–Ò‚’ç6Æ–6RƒÂ’ÇÂ.xJšÂ#°§Ğ ¢ò¢ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÒ¢ğ¢ò¢vöövÆR8î˜ÛR¢ğ¢ò¢ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÒ¢ğ ¦7–æ2gVæ7F–öâ66W75Fö¶Vâ€¢Vçc¢VçbÀ¢v†–6ƒ¢W&Ö—DæÖRÀ¢“¢&öÖ—6SÇ²ö³¢G'VS²Fö¶Vã¢7G&–ærÒÂ²ö³¢fÇ6S²v‡“¢7G&–ærÓâ°¢6öç7Bö&¢Òv—BVçbå5Dõ$RævWB…U$Ô•E5·v†–6…Òæ¶W’“°¢–b‚ö&¢’&WGW&â²ö³¢fÇ6RÂv‡“¢GµU$Ô•E5·v†–6…ÒæÆ&VÇÒ8îhê~88Î8.8(®8î8¾8)>8"ööWF‚÷7F'B8¾8(˜	®8~8n8ş88^8N8&Ó° ¢6öç7B6fVBÒ¥4ôâç'6R†v—Bö&¢çFW‡B‚’’27F÷&VDWFƒ°¢6öç7B&W2Òv—BfWF6‚‚&‡GG3¢òööWFƒ"ævöövÆV—2æ6öÒ÷Fö¶Vâ"Â°¢ÖWF†öC¢%õ5B"À¢†VFW'3¢²&6öçFVçB×G—R#¢&Æ–6F–öâ÷‚×wwrÖf÷&Ò×W&ÆVæ6öFVB"ÒÀ¢&öG“¢æWrU$Å6V&6…&×2‡°¢6Æ–VçEö–C¢VçbätôôtÄUô4Ä”TåEô”B27G&–ærÀ¢6Æ–VçE÷6V7&WC¢VçbätôôtÄUô4Ä”TåEõ4T5$UB27G&–ærÀ¢&Vg&W6…÷Fö¶Vã¢6fVBç&Vg&W6…÷Fö¶VâÀ¢w&çE÷G—S¢'&Vg&W6…÷Fö¶Vâ"À¢Ò’À¢Ò“°¢6öç7B"Ò†v—B&W2æ§6öâ‚’’2²66W75÷Fö¶Vãó¢7G&–æs²W'&÷#ó¢7G&–æs²W'&÷%öFW67&—F–öãó¢7G&–ærÓ°¢–b‚&W2æö²ÇÂ"æ66W75÷Fö¶Vâ’°¢&WGW&â°¢ö³¢fÇ6RÀ¢v‡“ ¢G¶"æW'&÷"óò&W2ç7FGW7ŞûÈòG¶"æW'&÷%öFW67&—F–öâóò.ŠªÎiˆî8®8r'Ö°¢†"æW'&÷"ÓÓÒ&–çfÆ–Eöw&çB"ò.ûÈŠ‹Xúş8ÎXˆ~8(Î8n8N8î88"ööWF‚÷7F'B8¾8(˜	®8~y»N8~8n8ş88^8NûÈ’"¢""’À¢Ó°¢Ğ¢&WGW&â²ö³¢G'VRÂFö¶Vã¢"æ66W75÷Fö¶VâÓ°§Ğ ¦7–æ2gVæ7F–öâtfWF6‚‡Fö¶Vã¢7G&–ærÂW&Ã¢7G&–ærÂ–æ—C¢&WVW7D–æ—BÒ·Ò“¢&öÖ—6SÅ&W7öç6Sâ°¢6öç7B†VFW'2ÒæWr†VFW'2†–æ—Bæ†VFW'2“°¢†VFW'2ç6WB‚&WF†÷&—¦F–öâ"Â&V&W"G·Fö¶VçÖ“°¢&WGW&âfWF6‚‡W&ÂÂ²ââæ–æ—BÂ†VFW'2Ò“°§Ğ ¦7–æ2gVæ7F–öât§6öãÅCâ‡Fö¶Vã¢7G&–ærÂW&Ã¢7G&–ærÂ–æ—C¢&WVW7D–æ—BÒ·Ò“¢&öÖ—6SÅCâ°¢6öç7B&W2Òv—BtfWF6‚‡Fö¶VâÂW&ÂÂ–æ—B“°¢6öç7B&rÒv—B&W2çFW‡B‚“°¢–b‚&W2æö²’F‡&÷ræWrW'&÷"†vöövÆR8¾8(8î‹ùNK¨²G·&W2ç7FGW7ŞûÉ¢G·&rç6Æ–6RƒÂc—Ö“°¢&WGW&â&rò„¥4ôâç'6R‡&r’2B’¢‡·Ò2B“°§Ğ ¢ò¢ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÒ¢ğ¢ò¢¦ööÒ¢ğ¢ò¢ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÒ¢ğ ¦6Æ72¦"°¢&—fFRÒÒæWrÖÇ7G&–ærÂ7G&–æsâ‚“°¢'6÷&"‡&W3¢&W7öç6R“¢fö–B°¢6öç7B‚Ò&W2æ†VFW'22Væ¶æ÷vâ2²vWE6WD6öö¶–Só¢‚’Óâ7G&–æuµÒÓ°¢f÷"†6öç7B&röbG—Vöb‚ævWE6WD6öö¶–RÓÓÒ&gVæ7F–öâ"ò‚ævWE6WD6öö¶–R‚’¢µÒ’°¢6öç7Bf—'7BÒ&rç7Æ—B‚#²"•³Ó°¢6öç7BWÒf—'7Bæ–æFW„öb‚#Ò"“°¢–b†Wâ’F†—2æÒç6WB†f—'7Bç6Æ–6RƒÂW’çG&–Ò‚’Âf—'7Bç6Æ–6R†W²’çG&–Ò‚’“°¢Ğ¢Ğ¢†VFW"‚“¢7G&–ær°¢&WGW&â²ââçF†—2æÕÒæÖ‚…¶²ÂeÒ’ÓâG¶·ÓÒG·gÖ’æ¦ö–â‚#²"“°¢Ğ§Ğ ¦gVæ7F–öâ¤†VFW'2†¦#¢¦"Â&VfW&W#ó¢7G&–ærÂ66WCó¢7G&–ær“¢&V6÷&CÇ7G&–ærÂ7G&–æsâ°¢6öç7Bƒ¢&V6÷&CÇ7G&–ærÂ7G&–æsâÒ²%W6W"ÔvVçB#¢TÓ°¢–b‡&VfW&W"’…²%&VfW&W"%ÒÒ&VfW&W#°¢–b†66WB’…²$66WB%ÒÒ66WC°¢6öç7B6²Ò¦"æ†VFW"‚“°¢–b†6²’…²$6öö¶–R%ÒÒ6³°¢&WGW&âƒ°§Ğ ¦7–æ2gVæ7F–öâvò†¦#¢¦"ÂW&Ã¢7G&–ærÂ&VfW&W#ó¢7G&–ærÂ66WCó¢7G&–ær“¢&öÖ—6SÇ²&W3¢&W7öç6S²W&Ã¢7G&–ærÓâ°¢ÆWB7W"ÒW&Ã°¢f÷"†ÆWB†÷Ò²†÷Â²†÷²²’°¢6öç7B&W2Òv—BfWF6‚†7W"Â²†VFW'3¢¤†VFW'2†¦"Â&VfW&W"Â66WB’Â&VF—&V7C¢&ÖçVÂ"Ò“°¢¦"æ'6÷&"‡&W2“°¢–b‡&W2ç7FGW2ãÒ3bb&W2ç7FGW2ÂC’°¢6öç7BÆö2Ò&W2æ†VFW'2ævWB‚&Æö6F–öâ"“°¢–b‚Æö2’&WGW&â²&W2ÂW&Ã¢7W"Ó°¢v—B&W2æ&öG“òæ6æ6VÂ‚“°¢7W"ÒæWrU$Â†Æö2Â7W"’çFõ7G&–ær‚“°¢6öçF–çVS°¢Ğ¢&WGW&â²&W2ÂW&Ã¢7W"Ó°¢Ğ¢F‡&÷ræWrW'&÷"‚%¦ööÒ8î8:®888*N8:Î8*ş888ÂY¹î8).‹h^88î8~8ò"“°§Ğ ¦–çFW&f6R¦ööÔ–æfò°¢¦#¢¦#°¢ò¢ ¢¢XhŞyIşyZ®Xû~8.X[iÈ8:®8;>8*ş8).™h¾8ş8ş8>8¾ZH8(ş8(¾KÛş8NhÚ8n8îyZ®Xû~8~8¢¢YÎ8˜Ë.yK¾8¾88n8¾8îXŠNZé®8¾8şKÛş88®8NûÈƒ##bÓ‚Ó#2ZéşkŠÎûÈ8.X¹^yK¾8).ŠªŞ8(8ş8(888¾KÛş8n8 ¢¢ğ¢–C¢7G&–æs°¢ò¢¢˜Ë.yK¾8Ş8î8(.8î8îyZ®Xû~8.YÎ8˜Ë.yK¾8®8(KÙ^[ªnXùn8>8n8(.YÎ88.hê~88îYŞX˜Ş8¾KÛş8b¢ğ¢&V4–C¢7G&–æs°¢ò¢¢KÉ®ŠÛ8îyZ®Xû~8%¦ööÒiÊÎKÙ>8îXú>8¾8Î8>8îKÉ®ŠÛ8î˜Ë.yK¾8).XZ˜:8ş88^8N8Ş8ˆî8ş88Ş8¾KÛş8b¢ğ¢ÖVWF–æuWV–C¢7G&–æs°¢Æ•W&Ã¢7G&–æs°¢×EW&Ã¢7G&–æs°¢G&ç67&—C¢7G&–ærÂçVÆÃ°¢F÷–3¢7G&–æs°¢7F'FVDC¢çVÖ&W#°¢GW&F–öå6V3¢çVÖ&W#°§Ğ ¦7–æ2gVæ7F–öâ&VE¦ööÒ‡6†&S¢7G&–ær“¢&öÖ—6SÅ¦ööÔ–æfóâ°¢6öç7B¦"ÒæWr¦"‚“° ¢6öç7BÒv—Bvò†¦"Â6†&R“°¢–b†ç&W2ç7FGW2ÓÒ#’F‡&÷ræWrW'&÷"†¦ööÒ8îX[iÈ89®8;Î8+8ÂG¶ç&W2ç7FGW7Ò8).‹ùN8~8î8~8ö“°¢6öç7B‡FÖÂÒv—Bç&W2çFW‡B‚“°¢6öç7BÒÒ‡FÖÂæÖF6‚‚öÖVWF–æt–C¥Ç2¢r…µâuÒ²’rò“°¢–b‚Ò’F‡&÷ræWrW'&÷"‚%¦ööÒ8îX[iÈ8:®8;>8*ş8ÎxJX«8¾8iÉş™™Xˆ~8(Î8~8ûÈ†ÖVWF–æt–B8ÎŠh¾8N8¾8(®8î8¾8)>ûÈ’"“° ¢6öç7B2Òv—Bvò†¦"ÂGµ¤ôôÕô$4WÒöçw2÷&V6÷&F–æróã÷Æ’÷6†&RÖ–æfòòG¶Õ³×ÖÂ6†&RÂ&Æ–6F–öâö§6öâ"“°¢6öç7B6¢Ò†v—B2ç&W2æ§6öâ‚’’2²7FGW3ó¢&ööÆVã²W'&÷$ÖW76vSó¢7G&–æs²&W7VÇCó¢²&VF—&V7EW&Ãó¢7G&–ærÒÓ°¢–b‚6¢ç7FGW2ÇÂ6¢ç&W7VÇCòç&VF—&V7EW&Â’F‡&÷ræWrW'&÷"†¦ööÒ8Î˜Ë.yK¾8îZNh˜8).‹ùN8~8î8¾8)>ûÉ¢G·6¢æW'&÷$ÖW76vRóò.ynyK8®8r'Ö“° ¢6öç7B–BÒ6¢ç&W7VÇBç&VF—&V7EW&Âç7Æ—B‚"ò"’æf–ÇFW"„&ööÆVâ’ç÷‚’27G&–æs°¢6öç7BÆ•W&ÂÒ¤ôôÕô$4R²6¢ç&W7VÇBç&VF—&V7EW&Ã° ¢6öç7BÒv—Bvò†¦"ÂÆ•W&ÂÂ6†&R“°¢v—Bç&W2æ&öG“òæ6æ6VÂ‚“° ¢6öç7B’Òv—Bvò†¦"ÂGµ¤ôôÕô$4WÒöçw2÷&V6÷&F–æróã÷Æ’ö–æfòòG·–GÖÂÆ•W&ÂÂ&Æ–6F–öâö§6öâ"“°¢6öç7B–¢Ò†v—B’ç&W2æ§6öâ‚’’2²7FGW3ó¢&ööÆVã²W'&÷$ÖW76vSó¢7G&–æs²&W7VÇCó¢&V6÷&CÇ7G&–ærÂVæ¶æ÷vãâÓ°¢–b‚–¢ç7FGW2ÇÂ–¢ç&W7VÇB’F‡&÷ræWrW'&÷"†¦ööÒ8Î˜Ë.yK¾8îh8^Z8).‹ùN8~8î8¾8)>ûÉ¢G¶–¢æW'&÷$ÖW76vRóò.ynyK8®8r'Ö“° ¢6öç7B"Ò–¢ç&W7VÇB2°¢ÖVWCó¢²F÷–3ó¢7G&–ærÓ°¢f–ÆU7F'EF–ÖSó¢çVÖ&W#°¢GW&F–öãó¢çVÖ&W#°¢×EW&Ãó¢7G&–æs°¢G&ç67&—EW&Ãó¢7G&–æs°¢F—6&ÆTF÷væÆöCó¢&ööÆVã°¢&V6÷&F–æsó¢²–Có¢7G&–æs²ÖVWF–æt–Có¢7G&–ærÓ°¢Ó°¢–b‡"æF—6&ÆTF÷væÆöB’F‡&÷ræWrW'&÷"‚.8>8î˜Ë.yK¾8şXùn[é~8ÎzhjÚ.8¾ŠŠŞZé®8^8(Î8n8N8î8ûÈ…¦ööÒ8îŠŠŞZé®8).z+®Š¨Ş8~8n8ş88^8NûÈ’"“°¢–b‚"æ×EW&Â’F‡&÷ræWrW'&÷"‚%¦ööÒ8ÎX¹^yK¾8îZNh˜8).‹ùN8~8î8¾8)2"“° ¢ÆWBG&ç67&—C¢7G&–ærÂçVÆÂÒçVÆÃ°¢–b‡"çG&ç67&—EW&Â’°¢6öç7BbÒv—Bvò†¦"Â¤ôôÕô$4R²"çG&ç67&—EW&ÂÂÆ•W&Â“°¢–b‡bç&W2æö²’G&ç67&—BÒv—Bbç&W2çFW‡B‚“°¢VÇ6Rv—Bbç&W2æ&öG“òæ6æ6VÂ‚“°¢Ğ ¢6öç7B&V4–BÒ"ç&V6÷&F–æsòæ–C°¢6öç7BÖVWF–æuWV–BÒ"ç&V6÷&F–æsòæÖVWF–æt–C°¢–b‚&V4–B’F‡&÷ræWrW'&÷"‚%¦ööÒ8Î˜Ë.yK¾8Ş8î8(.8î8îyZ®Xû~8).‹ùN8~8î8¾8)2"“°¢–b‚ÖVWF–æuWV–B’F‡&÷ræWrW'&÷"‚%¦ööÒ8ÎKÉ®ŠÛ8îyZ®Xû~8).‹ùN8~8î8¾8)2"“° ¢&WGW&â°¢¦"À¢–BÀ¢&V4–BÀ¢ÖVWF–æuWV–BÀ¢Æ•W&ÂÀ¢×EW&Ã¢"æ×EW&ÂÀ¢G&ç67&—BÀ¢F÷–3¢"æÖVWCòçF÷–2óò""À¢7F'FVDC¢"æf–ÆU7F'EF–ÖRóòFFRææ÷r‚’À¢GW&F–öå6V3¢"æGW&F–öâóòÀ¢Ó°§Ğ ¢ò¢ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÒ¢ğ¢ò¢¦ööÒiÊÎKÙ>8îXú>ûÈXˆn8¾8(Î8n8N8(¾8¾8).i[88(¾ûÈ’¢ğ¢ò¢ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÒ¢ğ ¢ò¢ ¢¢¦ööÒ8î˜Û^8)#iÊÎXùn8(¾8.iÈX«8®8î8ói˜.™i>888~8KÙÎ8(®y»N8K¹^{XN8ş8şxJ8NûÈjøîY¹îXùn8(®y»N8ûÈ8 ¢¢ğ¦7–æ2gVæ7F–öâ¦ööÕFö¶Vâ†Vçc¢Vçb“¢&öÖ—6SÇ7G&–æsâ°¢6öç7BÖ—76–ærÒÖ—76–æu¦ööÒ†Vçb“°¢–b†Ö—76–æræÆVæwF‚â’°¢F‡&÷ræWrW'&÷"†¦ööÒiÊÎKÙ>8îXú>8îŠŠŞZé®8Î‹k>8(®8î8¾8)>ûÈ‚G¶Ö—76–æræ¦ö–â‚"Â"—ŞûÈ8$6Æ÷VFfÆ&R8â6V7&WB8¾XZ^8(Î8n8ş88^8F“°¢Ğ ¢6öç7B&6–2Ò'Fö†G¶Vçbå¤ôôÕô4Ä”TåEô”GÓ¢G¶Vçbå¤ôôÕô4Ä”TåEõ4T5$UGÖ“°¢6öç7B&W2Òv—BfWF6‚…¤ôôÕõDô´TåõU$ÂÂ°¢ÖWF†öC¢%õ5B"À¢†VFW'3¢°¢WF†÷&—¦F–öã¢&6–2G¶&6–7ÖÀ¢&6öçFVçB×G—R#¢&Æ–6F–öâ÷‚×wwrÖf÷&Ò×W&ÆVæ6öFVB"À¢ÒÀ¢&öG“¢æWrU$Å6V&6…&×2‡°¢w&çE÷G—S¢&66÷VçEö7&VFVçF–Ç2"À¢66÷VçEö–C¢Vçbå¤ôôÕô44õTåEô”B27G&–ærÀ¢Ò’À¢Ò“°¢6öç7B"Ò†v—B&W2æ§6öâ‚’’2²66W75÷Fö¶Vãó¢7G&–æs²W'&÷#ó¢7G&–æs²&V6öãó¢7G&–ærÓ°¢–b‚&W2æö²ÇÂ"æ66W75÷Fö¶Vâ’°¢F‡&÷ræWrW'&÷"†¦ööÒ8î˜Û^8ÎXùn8(Î8î8¾8)>ûÈ‚G·&W2ç7FGW7ŞûÈòG¶"ç&V6öâóò"æW'&÷"óò.ynyK8®8r'ŞûÈ–“°¢Ğ¢&WGW&â"æ66W75÷Fö¶Vã°§Ğ ¢ò¢ ¢¢KÉ®ŠÛ8îyZ®Xû~8).KØşh˜8¾Yø¾8(‹ëÎ8(8(¾[Ú.8¾88(¾8 ¢¢¦ööÒ8îk®8î8(®8~8yZ®Xû~8Âò8~Zx¾8î8(¾8²òò8).Y
+¾8(88Ş88K¨Î˜xŞ8¾ZHhù¾88(¾8 ¢¢ğ¦gVæ7F–öâWV–EF‚‡WV–C¢7G&–ær“¢7G&–ær°¢6öç7Böæ6RÒVæ6öFUU$”6ö×öæVçB‡WV–B“°¢&WGW&âWV–Bç7F'G5v—F‚‚"ò"’ÇÂWV–Bæ–æ6ÇVFW2‚"òò"’òVæ6öFUU$”6ö×öæVçB†öæ6R’¢öæ6S°§Ğ ¦–çFW&f6R¦ööÔf–ÆR°¢–Có¢7G&–æs°¢f–ÆU÷G—Só¢7G&–æs°¢f–ÆUöW‡FVç6–öãó¢7G&–æs°¢&V6÷&F–æu÷7F'Có¢7G&–æs°¢&V6÷&F–æuöVæCó¢7G&–æs°¢&V6÷&F–æu÷G—Só¢7G&–æs°¢7FGW3ó¢7G&–æs°¢f–ÆU÷6—¦Só¢çVÖ&W#°§Ğ ¦–çFW&f6R6VvÖVçG2°¢ò¢¢iÊÎKÙ>8ÎKÙ^iÊÎ8¾Xˆn8¾8(Î8n8N8(¾8²¢ğ¢6÷VçC¢çVÖ&W#°¢ò¢¢iÊÎ8®8N8îZx¾8î8(®8îi˜.X‹¾ûÈ…¦ööÒ8Î‹ùN8~8şih~ZÙ~X‰~8î8î8îûÈ’¢ğ¢7F'G3¢7G&–æuµÓ°¢ò¢¢X¹^yK¾Kº^ZIn8(.Y
+¾8(8ş8¦ööÒ8Î‹ùN8~8ş89^8*8*N8:¾8î{xşi[¢ğ¢f–ÆW3¢çVÖ&W#°§Ğ ¢ò¢ ¢¢KÉ®ŠÛ8.88N8n8)>8î˜Ë.yK¾8)"¦ööÒiÊÎKÙ>8¾ˆî8N8n8iÊÎKÙ>8ÎKÙ^iÊÎ8.8(¾8¾8).i[88(¾8 ¢ ¢¢i[8ik8îk:hHşûÉ®‹ùN8>8n8ş8(¾89^8*8*N8:¾8¾8ş8™û>Z;888;¾888:>88>888;¾ih~ZÙ~‹[~8>8~8(.k{~8n8>8n8N8(¾8 ¢¢8^8(8³8N8îiÊÎKÙ>8¾Zûî8~8nyK¾™Ú.K¹8Ş8Xø.Xªˆ^KˆŠj~8ã.8N8îX¹^yK¾8ÎKÙÎ8(8(Î8(¾ŠŠŞZé®8(.8.8(¾8ş8(8¢¢X¹^yK¾8îiÊÎi[8).8Ş8î8î8îi[88(¾8Xˆn8¾8(Î8n8N8®8N8(.8î8î8s.iÊÎ8¾Šh¾88(¾8 ¢¢8(8>8n8ÎX¹^yK¾8îZx¾8î8(®8îi˜.X‹¾8ÎKÙ^zŠîšî8.8(¾8¾8Ş8~i[88(¾8 ¢¢ğ¦7–æ2gVæ7F–öâ¦ööÕ6VvÖVçG2†Vçc¢VçbÂÖVWF–æuWV–C¢7G&–ær“¢&öÖ—6SÅ6VvÖVçG3â°¢6öç7BFö¶VâÒv—B¦ööÕFö¶Vâ†Vçb“°¢6öç7B&W2Òv—BfWF6‚†Gµ¤ôôÕô—ÒöÖVWF–æw2òG·WV–EF‚†ÖVWF–æuWV–B—Ò÷&V6÷&F–æw6Â°¢†VFW'3¢²WF†÷&—¦F–öã¢&V&W"G·Fö¶VçÖÒÀ¢Ò“°¢6öç7B&rÒv—B&W2çFW‡B‚“°¢–b‚&W2æö²’°¢F‡&÷ræWrW'&÷"†¦ööÒiÊÎKÙ>8Î˜Ë.yK¾8îKˆŠj~8).‹ùN8~8î8¾8)>ûÈ‚G·&W2ç7FGW7ŞûÈòG·&rç6Æ–6RƒÂ3—ŞûÈ–“°¢Ğ ¢6öç7B&öG’Ò¥4ôâç'6R‡&r’2²&V6÷&F–æuöf–ÆW3ó¢¦ööÔf–ÆUµÒÓ°¢6öç7BÆÂÒ&öG’ç&V6÷&F–æuöf–ÆW2óòµÓ°¢6öç7Bf–FV÷2ÒÆÂæf–ÇFW"‚†b’Óâ†bæf–ÆU÷G—Róò""’çFõWW$66R‚’ÓÓÒ$ÕB"“°¢6öç7B7F'G2Ò²ââææWr6WB‡f–FV÷2æÖ‚†b’Óâbç&V6÷&F–æu÷7F'Bóò""’æf–ÇFW"„&ööÆVâ’•Òç6÷'B‚“° ¢&WGW&â°¢òòZx¾8î8(®8îi˜.X‹¾8ÎXùn8(Î8®8N88Ş8ş8X¹^yK¾8îiÊÎi[8).8Ş8î8î8îKÛş8nûÈi[8‰Ş88~8).KÙÎ8(8®8NûÈ¢6÷VçC¢7F'G2æÆVæwF‚âò7F'G2æÆVæwF‚¢f–FV÷2æÆVæwF‚À¢7F'G2À¢f–ÆW3¢ÆÂæÆVæwF‚À¢Ó°§Ğ ¢ò¢ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÒ¢ğ¢ò¢ih~ZÙ~‹[~8>8~8).ŠªŞ8(8(¾ih~zº8¾y»N8’¢ğ¢ò¢ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÒ¢ğ ¢ò¢ ¢¢¦ööÒ8îˆî8ŞXùn8(®8Îk®8î8>8nZIn8Šˆ‰8îy»N8~Š8 ¢¢8>8>8¾‹k>888Ş8ş8Zéş™©¾8¾ZIn8(Î8şZéşxš8).Šh¾8n8¾8(‹k>88>8ûÈh	Ş8N8N8Ş8~‹k>8^8®8NûÈ8 ¢¢ğ¦6öç7B´”´•Dõ$•ôäõ4„“¢µ&VtW‡Â7G&–æuÕµÒÒ°¢²ş8+~8*~8*.8:Ş89gÎ8+~8*.8:89ÇÎ8~8(>8(8ÇÎ8+~8*~8*.8:89ÂörÂ.8~8.8(8Â%ÒÀ¢²şj™iˆâörÂ.j™xë"%ÒÀ¢²ş89Ş8+>89Ş8+2örÂ.8Ş8>8Ş82%ÒÀ¥Ó° ¢ò¢¢8N8îjë^‰Ş8îyºîZè8î™[~8^8.8>8(Î8).‹h^88ş8(jÊ8î8¾8ş8î8(®8Xˆn88(²¢ğ¦6öç7BDå$µUôÄ”Ô•BÒ3° ¦–çFW&f6RÆ–åG&ç67&—B°¢ò¢¢Š›8~8şK«®8îYŞX˜Ş8%¦ööÒ8ÎK¹88ş8(.8î8).8Ş8î8î8â¢ğ¢7V¶W'3¢7G&–æuµÓ°¢ò¢¢Š›8~8şK«®8ÂK«®888²¢ğ¢6öÆó¢&ööÆVã°¢ò¢¢jë^‰Ş8îi[¢ğ¢&w&‡3¢çVÖ&W#°¢ò¢¢iÊÎihr¢ğ¢&öG“¢7G&–æs°§Ğ ¢ò¢ ¢¢¦ööÒ8îih~ZÙ~‹[~8>8~ûÈi˜.X‹¾8N8ŞûÈ8).8ŠªŞ8(8(¾ih~zº8¾y»N88 ¢¢8;¾yZ®Xû~8îŠÎ8i˜.X‹¾8îŠÎ8).‰Ş88¢¢8;¾YÎ8K«®8Î{i®88nŠ›8~8n8N8(¾88>8(Ş8ò8N8îjë^‰Ş8¾8î88(8(°¢¢8;¾Š›8~8şK«®8ÂK«®888î88Ş8şYŞX˜Ş8).X{®8^8®8NûÈjøîŠÎ8¾YÎ8YŞX˜Ş8ÎKŠn8n8î8).˜ş88(¾ûÈ¢¢ğ¦gVæ7F–öâgGEFõÆ–â‡gGC¢7G&–ær“¢Æ–åG&ç67&—B°¢6öç7B7VW3¢²v†ó¢7G&–æs²FW‡C¢7G&–ærÕµÒÒµÓ° ¢f÷"†6öç7B&Æö6²öbgGBç&WÆ6R‚õÇ"örÂ""’ç7Æ—B‚õÆç³"ÇÒò’’°¢6öç7BÆ–æW2Ò&Æö6²ç7Æ—B‚%Æâ"’æÖ‚‡2’Óâ2çG&–Ò‚’’æf–ÇFW"„&ööÆVâ“°¢–b‚Æ–æW2æÆVæwF‚’6öçF–çVS°¢–b‚õåtT%eEBòçFW7B†Æ–æW5³Ò’’6öçF–çVS° ¢6öç7B&öG’ÒÆ–æW2æf–ÇFW"‚†Â’ÓâõåÆB²BòçFW7B†Â’bbÂæ–æ6ÇVFW2‚"ÒÓâ"’’æ¦ö–â‚""’çG&–Ò‚“°¢–b‚&öG’’6öçF–çVS° ¢6öç7BÒÒ&öG’æÖF6‚‚õâ…µã®ûÉ¥×³Ã#Ò•³®ûÉ¥ÕÇ2¢‚â¢’Bò“°¢–b†Ò’°¢–b†Õ³%ÒçG&–Ò‚’’7VW2çW6‚‡²v†ó¢Õ³ÒçG&–Ò‚’ÂFW‡C¢Õ³%ÒçG&–Ò‚’Ò“°¢ÒVÇ6R°¢7VW2çW6‚‡²v†ó¢""ÂFW‡C¢&öG’Ò“°¢Ğ¢Ğ ¢6öç7B7V¶W'2Ò²ââææWr6WB†7VW2æÖ‚†2’Óâ2çv†ò’æf–ÇFW"„&ööÆVâ’•Ó°¢6öç7B6öÆòÒ7V¶W'2æÆVæwF‚ÃÒ° ¢6öç7B&3¢²v†ó¢7G&–æs²FW‡C¢7G&–ærÕµÒÒµÓ°¢ÆWB7W#¢²v†ó¢7G&–æs²FW‡C¢7G&–ærÒÂçVÆÂÒçVÆÃ°¢f÷"†6öç7B2öb7VW2’°¢–b‚2çFW‡B’6öçF–çVS°¢–b†7W"bb7W"çv†òÓÓÒ2çv†òbb7W"çFW‡BæÆVæwF‚ÂDå$µUôÄ”Ô•B’7W"çFW‡B³Ò2çFW‡C°¢VÇ6R°¢–b†7W"’&2çW6‚†7W"“°¢7W"Ò²v†ó¢2çv†òÂFW‡C¢2çFW‡BÓ°¢Ğ¢Ğ¢–b†7W"’&2çW6‚†7W"“° ¢6öç7BÆ–æW2Ò&2æÖ‚‡’Óâ‡6öÆòÇÂçv†òòçFW‡B¢G·çv†÷ŞûÉ¢G·çFW‡GÖ’“°¢ÆWB&öG’ÒÆ–æW2æ¦ö–â‚%ÆåÆâ"“°¢f÷"†6öç7B·&RÂFõÒöb´”´•Dõ$•ôäõ4„’’&öG’Ò&öG’ç&WÆ6R‡&RÂFò“° ¢&WGW&â²7V¶W'2Â6öÆòÂ&w&‡3¢Æ–æW2æÆVæwF‚Â&öG’Ó°§Ğ ¢ò¢¢ŠªŞ8(8(¾x˜8îXXš
+Ş8¾{Úî8şŠh¾X{®8r¢ğ¦gVæ7F–öâFö4†VFW"‡F—FÆS¢7G&–ærÂFFS¢7G&–ærÂGW&F–öå6V3¢çVÖ&W"ÂC¢Æ–åG&ç67&—B“¢7G&–ær°¢6öç7BÖ–âÒÖF‚ç&÷VæB†GW&F–öå6V2òc“°¢6öç7Bv†òÒBç7V¶W'2æÆVæwF‚òBç7V¶W'2æ¦ö–â‚.8;²"’¢.ûÈYŞX˜Ş8®8~ûÈ’#°¢&WGW&â°¢F—FÆRÀ¢Xøî˜Ë.izRG¶FFWÒûÈò™[~8RG¶Ö–çÒXˆbûÈòŠ›8~8şK«¢G·v†÷ÖÀ¢.8>8îih~zº8ò¦ööÒ8îˆî8ŞXùn8(®8).ˆz®X¹^8~y»N8~8ş8(.8î8~88.Y»®iÈYŞŠ™î8i[ZÙ~8şXX>8îX¹^yK¾8~z+®8¾8(8n8ş88^8N8""À¢""À¢""À¢Òæ¦ö–â‚%Æâ"“°§Ğ ¢ò¢ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÒ¢ğ¢ò¢888:8*N89b¢ğ¢ò¢ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÒ¢ğ ¦7–æ2gVæ7F–öâföÆFW"‡Fö¶Vã¢7G&–ærÂæÖS¢7G&–ærÂ&VçC¢7G&–ærÂçVÆÂ“¢&öÖ—6SÇ7G&–æsâ°¢6öç7BÒ°¢æÖRÒrG¶æÖRç&WÆ6R‚òrörÂ%ÅÂr"—ÒvÀ¢&Ö–ÖUG—RÒvÆ–6F–öâ÷fæBævöövÆRÖ2æföÆFW"r"À¢'G&6†VBÒfÇ6R"À¢&VçBòrG·&VçGÒr–â&VçG6¢"w&ö÷Br–â&VçG2"À¢Òæ¦ö–â‚"æB"“° ¢6öç7Bf÷VæBÒv—Bt§6öãÇ²f–ÆW3ó¢²–C¢7G&–ærÕµÒÓâ€¢Fö¶VâÀ¢‡GG3¢ò÷wwrævöövÆV—2æ6öÒöG&—fR÷c2öf–ÆW3÷ÒG¶Væ6öFUU$”6ö×öæVçB‡—Òff–VÆG3Öf–ÆW2†–B’gvU6—¦SÓÀ¢“°¢–b†f÷VæBæf–ÆW3òå³Ò’&WGW&âf÷VæBæf–ÆW5³Òæ–C° ¢6öç7BÖFRÒv—Bt§6öãÇ²–C¢7G&–ærÓâ‡Fö¶VâÂ&‡GG3¢ò÷wwrævöövÆV—2æ6öÒöG&—fR÷c2öf–ÆW3öf–VÆG3Ö–B"Â°¢ÖWF†öC¢%õ5B"À¢†VFW'3¢²&6öçFVçB×G—R#¢&Æ–6F–öâö§6öâ"ÒÀ¢&öG“¢¥4ôâç7G&–æv–g’‡°¢æÖRÀ¢Ö–ÖUG—S¢&Æ–6F–öâ÷fæBævöövÆRÖ2æföÆFW""À¢&VçG3¢&VçBò·&VçEÒ¢VæFVf–æVBÀ¢Ò’À¢Ò“°¢&WGW&âÖFRæ–C°§Ğ ¦7–æ2gVæ7F–öâWE6ÖÆÄf–ÆR€¢Fö¶Vã¢7G&–ærÀ¢æÖS¢7G&–ærÀ¢&VçC¢7G&–ærÀ¢Ö–ÖS¢7G&–ærÀ¢&öG“¢7G&–ærÀ¢ò¢¢888:8*N89nXN8~KÙ^88~8nhÈ8N8¾8$vöövÆR888*Ş8:^8:8;>888¾8~8ş8N88Ş88kŠ8’¢ğ¢G&—fTÖ–ÖSó¢7G&–ærÀ¢“¢&öÖ—6SÇ7G&–æsâ°¢6öç7B&÷VæF'’Ò&""²7'—Fòç&æFöÕUT”B‚’ç&WÆ6R‚òÒörÂ""“°¢6öç7BÖWF¢&V6÷&CÇ7G&–ærÂVæ¶æ÷vãâÒ²æÖRÂ&VçG3¢·&VçEÒÓ°¢–b†G&—fTÖ–ÖR’ÖWFæÖ–ÖUG—RÒG&—fTÖ–ÖS°¢6öç7B–ÆöBĞ¢ÒÒG¶&÷VæF'—ÕÇ%Ææ6öçFVçB×G—S¢Æ–6F–öâö§6öã²6†'6WCÕUDbÓ…Ç%ÆåÇ%Ææ°¢¥4ôâç7G&–æv–g’†ÖWF’°¢Ç%ÆâÒÒG¶&÷VæF'—ÕÇ%Ææ6öçFVçB×G—S¢G¶Ö–ÖWÓ²6†'6WCÕUDbÓ…Ç%ÆåÇ%Ææ°¢&öG’°¢Ç%ÆâÒÒG¶&÷VæF'—ÒÒÖ° ¢6öç7B"Òv—Bt§6öãÇ²–C¢7G&–ærÓâ€¢Fö¶VâÀ¢&‡GG3¢ò÷wwrævöövÆV—2æ6öÒ÷WÆöBöG&—fR÷c2öf–ÆW3÷WÆöEG—SÖ×VÇF—'Bff–VÆG3Ö–B"À¢²ÖWF†öC¢%õ5B"Â†VFW'3¢²&6öçFVçB×G—R#¢×VÇF—'B÷&VÆFVC²&÷VæF'“ÒG¶&÷VæF'—ÖÒÂ&öG“¢–ÆöBÒÀ¢“°¢&WGW&â"æ–C°§Ğ ¢ò¢ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÒ¢ğ¢ò¢‚Ô"8®8N˜¾8b¢ğ¢ò¢ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÒ¢ğ ¢ò¢¢vöövÆR8îXù~8Xú>8)#8N™h¾8N8n88Ş8îKØşh˜8).‹ùN8’¢ğ¦7–æ2gVæ7F–öâ÷Vå6W76–öâ‡Fö¶Vã¢7G&–ærÂW&Ã¢7G&–ærÂÖWF¢Væ¶æ÷vâÂ6—¦S¢çVÖ&W"ÂÖ–ÖS¢7G&–ær“¢&öÖ—6SÇ7G&–æsâ°¢6öç7B&W2Òv—BtfWF6‚‡Fö¶VâÂW&ÂÂ°¢ÖWF†öC¢%õ5B"À¢†VFW'3¢°¢&6öçFVçB×G—R#¢&Æ–6F–öâö§6öã²6†'6WCÕUDbÓ‚"À¢'‚×WÆöBÖ6öçFVçB×G—R#¢Ö–ÖRÀ¢'‚×WÆöBÖ6öçFVçBÖÆVæwF‚#¢7G&–ær‡6—¦R’À¢ÒÀ¢&öG“¢¥4ôâç7G&–æv–g’†ÖWF’À¢Ò“°¢6öç7BÆö2Ò&W2æ†VFW'2ævWB‚&Æö6F–öâ"“°¢–b‚&W2æö²ÇÂÆö2’F‡&÷ræWrW'&÷"†Xù~8Xú>8).™h¾88î8¾8)2G·&W2ç7FGW7ŞûÉ¢G²†v—B&W2çFW‡B‚’’ç6Æ–6RƒÂc—Ö“°¢&WGW&âÆö3°§Ğ ¢ò¢¢¦ööÒ8¾8(’‚Ô"8®8NŠªŞ8)>8~8™h¾8N8şXù~8Xú>8kŠ8’¢ğ¦7–æ2gVæ7F–öâ&VÆ’€¢£¢¦ööÔ–æfòÀ¢6—¦S¢çVÖ&W"À¢6W76–öã¢7G&–ærÀ¢Fö¶Vã¢7G&–ærÀ¢g&öÓ¢çVÖ&W"À¢÷WC¢‡3¢7G&–ær’Óâfö–BÀ¢&VC¢‚’Óâ&öÖ—6SÇfö–CâÀ¢“¢&öÖ—6SÅ&V6÷&CÇ7G&–ærÂVæ¶æ÷vããâ°¢6öç7BCÒFFRææ÷r‚“°¢ÆWB6VçBÒg&öÓ° ¢v†–ÆR‡6VçBÂ6—¦R’°¢6öç7BVæBÒÖF‚æÖ–â‡6VçB²4…Tä²Â6—¦R’Ò° ¢6öç7B'BÒv—BfWF6‚‡¢æ×EW&ÂÂ°¢†VFW'3¢²ââç¤†VFW'2‡¢æ¦"Â¢çÆ•W&Â’Â&ævS¢'—FW3ÒG·6VçGÒÒG¶VæGÖÒÀ¢Ò“°¢–b‡'Bç7FGW2ÓÒ#bbb'Bç7FGW2ÓÒ#’°¢F‡&÷ræWrW'&÷"†¦ööÒ8ÎX¹^yK¾8îKˆ˜:8).‹ùN8~8î8¾8)>ûÈ‚G·'Bç7FGW7ŞûÈ–“°¢Ğ¢6öç7B'VbÒv—B'Bæ'&”'VffW"‚“° ¢6öç7BWBÒv—BtfWF6‚‡Fö¶VâÂ6W76–öâÂ°¢ÖWF†öC¢%UB"À¢†VFW'3¢°¢&6öçFVçB×&ævR#¢'—FW2G·6VçGÒÒG·6VçB²'Vbæ'—FTÆVæwF‚ÒÒòG·6—¦WÖÀ¢&6öçFVçB×G—R#¢'f–FVòö×B"À¢ÒÀ¢&öG“¢'VbÀ¢Ò“° ¢–b‡WBç7FGW2ÓÓÒ3‚’°¢6VçB³Ò'Vbæ'—FTÆVæwFƒ°¢v—B&VB‚“°¢÷WB†G¶Ö"‡6VçB—ÒòG¶Ö"‡6—¦R—ÒÔ.ûÈ‚G·6V2„FFRææ÷r‚’ÒC—Òzy.ûÈ–“°¢6öçF–çVS°¢Ğ¢–b‡WBæö²’°¢6VçB³Ò'Vbæ'—FTÆVæwFƒ°¢v—B&VB‚“°¢÷WB†G¶Ö"‡6VçB—ÒòG¶Ö"‡6—¦R—ÒÔ.ûÈ‚G·6V2„FFRææ÷r‚’ÒC—Òzy.ûÈZèÎK¨f“°¢6öç7B&rÒv—BWBçFW‡B‚“°¢&WGW&â&rò„¥4ôâç'6R‡&r’2&V6÷&CÇ7G&–ærÂVæ¶æ÷vãâ’¢·Ó°¢Ğ¢–b‡WBç7FGW2ÓÓÒCBÇÂWBç7FGW2ÓÓÒC’°¢v—BWBæ&öG“òæ6æ6VÂ‚“°¢F‡&÷ræWr6W76–öävöæR‚.Xù~8Xú>8îiÉş™™8ÎXˆ~8(Î8î8~8ò"“°¢Ğ¢F‡&÷ræWrW'&÷"†˜8(®X{®8~8ÎjÚ.8î8(®8î8~8òG·WBç7FGW7ŞûÉ¢G²†v—BWBçFW‡B‚’’ç6Æ–6RƒÂc—Ö“°¢Ğ¢F‡&÷ræWrW'&÷"‚.˜8(®{X.88ş8î8²vöövÆR8¾8(ZèÎK¨n8î‹ùNK¨¾8Î8.8(®8î8¾8)2"“°§Ğ §G—R&ö&RĞ¢Â²¶–æC¢'6VçB#²6VçC¢çVÖ&W"Ğ¢Â²¶–æC¢&FöæR#²&öG“¢&V6÷&CÇ7G&–ærÂVæ¶æ÷vãâĞ¢Â²¶–æC¢&vöæR"Ó° ¢ò¢¢Xù~8Xú>8Î88>8î8~Xù~8Xùn8>8ş8¾8).ˆî8ò¢ğ¦7–æ2gVæ7F–öâ6µ6W76–öâ‡Fö¶Vã¢7G&–ærÂ6W76–öã¢7G&–ærÂ6—¦S¢çVÖ&W"“¢&öÖ—6SÅ&ö&Sâ°¢6öç7B&W2Òv—BtfWF6‚‡Fö¶VâÂ6W76–öâÂ°¢ÖWF†öC¢%UB"À¢†VFW'3¢²&6öçFVçB×&ævR#¢'—FW2¢òG·6—¦WÖÒÀ¢Ò“°¢–b‡&W2æö²’°¢6öç7B&rÒv—B&W2çFW‡B‚“°¢&WGW&â²¶–æC¢&FöæR"Â&öG“¢&rò„¥4ôâç'6R‡&r’2&V6÷&CÇ7G&–ærÂVæ¶æ÷vãâ’¢·ÒÓ°¢Ğ¢–b‡&W2ç7FGW2ÓÓÒ3‚’°¢6öç7B&ævRÒ&W2æ†VFW'2ævWB‚'&ævR"“°¢v—B&W2æ&öG“òæ6æ6VÂ‚“°¢–b‚&ævR’&WGW&â²¶–æC¢'6VçB"Â6VçC¢Ó°¢6öç7BVæBÒçVÖ&W"‡&ævRç7Æ—B‚"Ò"•³Ò“°¢&WGW&â²¶–æC¢'6VçB"Â6VçC¢çVÖ&W"æ—4f–æ—FR†VæB’òVæB²¢Ó°¢Ğ¢v—B&W2æ&öG“òæ6æ6VÂ‚“°¢&WGW&â²¶–æC¢&vöæR"Ó°§Ğ ¢ò¢¢X¹^yK¾8)#8¾h˜8˜8(¾8.Xù~8Xú>8Î8.8(Î8{i®8Ş8¾8(8xJ88(Î8™h¾8N8n8¾8(’¢ğ¦7–æ2gVæ7F–öâ6VæEf–FVò€¢£¢¦ööÔ–æfòÀ¢6—¦S¢çVÖ&W"À¢Fö¶Vã¢7G&–ærÀ¢÷Vã¢‚’Óâ&öÖ—6SÇ7G&–æsâÀ¢†C¢7G&–ærÂVæFVf–æVBÀ¢&VÖVÖ&W#¢‡6W76–öã¢7G&–ær’Óâ&öÖ—6SÇfö–CâÀ¢÷WC¢‡3¢7G&–ær’Óâfö–BÀ¢&VC¢‚’Óâ&öÖ—6SÇfö–CâÀ¢“¢&öÖ—6SÅ&V6÷&CÇ7G&–ærÂVæ¶æ÷vããâ°¢ÆWB6W76–öâÒ†C°¢ÆWBg&öÒÒ° ¢–b‡6W76–öâ’°¢6öç7B6¶VBÒv—B6½ºÓ[h‘éì¶»§q«^u±”ƒ'
+·—‡Ï#¾ò$(€€€¥˜€¡¨¹ÑÉ…¹ÍÉ¥ÁÑ½½¹”¤ì(€€€€€½ÕĞ ˆ€ƒ¢ª·
+
+/&#¿’ösš"Cšâ#ÿŸdˆ¤ì(€€€ô•±Í”¥˜€¡è¹ÑÉ…¹ÍÉ¥ÁĞ¤ì(€€€€€½¹ÍĞÁ±…¥¸€ôÙÑÑQ½A±…¥¸¡è¹ÑÉ…¹ÍÉ¥ÁĞ¤ì(€€€€€…İ…¥ĞÁÕÑMµ…±±¥±” (€€€€€€€İÍQ½­•¸°(€€€€€€€€‘íİ¡•¸¹‘…Ñ•õ|‘íÑ¥Ñ±•õšZ–¶_¢ÖßO]€°(€€€€€€€¨¹‘É¥Ù•½±‘•É%…ÌÍÑÉ¥¹œ°(€€€€€€€€‰Ñ•áĞ½Á±…¥¸ˆ°(€€€€€€€‘½!•…‘•È¡Ñ¥Ñ±”°İ¡•¸¹‘…Ñ”°è¹‘ÕÉ…Ñ¥½¹M•Œ°Á±…¥¸¤€¬Á±…¥¸¹‰½‘ä°(€€€€€€€€‰…ÁÁ±¥…Ñ¥½¸½Ù¹¹½½±”µ…ÁÁÌ¹‘½Õµ•¹Ğˆ°(€€€€€€¤ì(€€€€€¨¹ÑÉ…¹ÍÉ¥ÁÑ½½¹”€ôÑÉÕ”ì(€€€€€…İ…¥ĞÍ…Ù•)½ˆ¡•¹Ø°¨¤ì(€€€€€½ÕĞ (€€€€€€€€€ƒ¢ª·
+
+/&#
+K’ös¾ò#¢¦Ç_’êè€‘íÁ±…¥¸¹ÍÁ•…­•ÉÌ¹±•¹Ñ¡ôƒ’êëïšº×¢Bô€‘íÁ±…¥¸¹Á…É…É…Á¡Í÷ì‘íÁ±…¥¸¹‰½‘ä¹±•¹Ñ¡ôƒšZ–¶_¾ò%€°(€€€€€€¤ì(€€€ô((€€€€¼¼ƒ–.WRï
+K'§
+“[à(€€€¥˜€¡¨¹‘É¥Ù•½¹”¤ì(€€€€€½ÕĞ ˆ€ƒ–.WRï¿'§
+“[ã’şw–¶cšâ#ÿŸdˆ¤ì(€€€ô•±Í”ì(€€€€€½ÕĞ ˆ€ƒ–.WRï
+K'§
+“[àˆ¤ì(€€€€€…İ…¥ĞÍ•¹‘Y¥‘•¼ (€€€€€€€è°(€€€€€€€Í¥é”°(€€€€€€€İÍQ½­•¸°(€€€€€€€€ ¤€ôø(€€€€€€€€€½Á•¹M•ÍÍ¥½¸ (€€€€€€€€€€€İÍQ½­•¸°(€€€€€€€€€€€€‰¡ÑÑÁÌè¼½İİÜ¹½½±•…Á¥Ì¹½´½ÕÁ±½…½‘É¥Ù”½ØÌ½™¥±•ÌıÕÁ±½…‘QåÁ”õÉ•ÍÕµ…‰±”™™¥•±‘Ìõ¥ˆ°(€€€€€€€€€€€ì¹…µ”è€‘íİ¡•¸¹‘…Ñ•õ|‘íÑ¥Ñ±•ô¹µÀÑ€°Á…É•¹ÑÌèm¨¹‘É¥Ù•½±‘•É%‘tô°(€€€€€€€€€€€Í¥é”°(€€€€€€€€€€€€‰Ù¥‘•¼½µÀĞˆ°(€€€€€€€€€€¤°(€€€€€€€¨¹‘É¥Ù•M•ÍÍ¥½¸°(€€€€€€€…Íå¹Œ€¡Í•ÍÍ¥½¸¤€ôøì(€€€€€€€€€¨¹‘É¥Ù•M•ÍÍ¥½¸€ôÍ•ÍÍ¥½¸ì(€€€€€€€€€…İ…¥ĞÍ…Ù•)½ˆ¡•¹Ø°¨¤ì(€€€€€€€ô°(€€€€€€€½ÕĞ°(€€€€€€€‰•…Ğ°(€€€€€€¤ì(€€€€€¨¹‘É¥Ù•½¹”€ôÑÉÕ”ì(€€€€€…İ…¥ĞÍ…Ù•)½ˆ¡•¹Ø°¨¤ì(€€€ô(€€€…İ…¥ĞÍ•Ğ ‰É¥Ù—’şw–¶cšâ#üˆ¤ì((€€€€¼¼ƒ–.WRï
+He½ÕQÕ‰”ƒà(€€€¥˜€¡¨¹å½ÕÑÕ‰•UÉ°¤ì(€€€€€½ÕĞ ˆ€e½ÕQÕ‰”ƒ¯¿’â+Kšâ#ÿŸdˆ¤ì(€€€ô•±Í”ì(€€€€€½ÕĞ ˆ€ƒ–.WRï
+He½ÕQÕ‰”ƒã¾ò#¦fC–ºk–³¦Z/Ÿ’úw¦‚ó¾ò$ˆ¤ì(€€€€€…İ…¥ĞÍ•Ğ ‰e½ÕQÕ‰—š*W¢ÿ’â´ˆ¤ì(€€€€€½¹ÍĞåĞ€ô…İ…¥Ğ…•ÍÍQ½­•¸¡•¹Ø°€‰å½ÕÑÕ‰”ˆ¤ì(€€€€€¥˜€ …åĞ¹½¬¤Ñ¡É½Ü¹•ÜÉÉ½È¡åĞ¹İ¡ä¤ì((€€€€€½¹ÍĞÙ¥‘•¼€ô€¡…İ…¥ĞÍ•¹‘Y¥‘•¼ (€€€€€€€è°(€€€€€€€Í¥é”°(€€€€€€€åĞ¹Ñ½­•¸°(€€€€€€€€ ¤€ôø(€€€€€€€€€½Á•¹M•ÍÍ¥½¸ (€€€€€€€€€€€åĞ¹Ñ½­•¸°(€€€€€€€€€€€€‰¡ÑÑÁÌè¼½İİÜ¹½½±•…Á¥Ì¹½´½ÕÁ±½…½å½ÕÑÕ‰”½ØÌ½Ù¥‘•½ÌıÕÁ±½…‘QåÁ”õÉ•ÍÕµ…‰±”™Á…ÉĞõÍ¹¥ÁÁ•Ğ±ÍÑ…ÑÕÌˆ°(€€€€€€€€€€€ì(€€€€€€€€€€€€€Í¹¥ÁÁ•ĞèìÑ¥Ñ±”è€¡É½İm=0¹Ñ¥Ñ±•tñğè¹Ñ½Á¥Œñğ€‹‡¦†0ˆ¤¹Í±¥” À°€ÄÀÀ¤°‘•ÍÉ¥ÁÑ¥½¸è€ˆˆô°(€€€€€€€€€€€€€€¼¨¨(€€€€€€€€€€€€€€€¨€ÈÀÈØ´Àà´ÈÃ¾òkO¸ƒÏ7¬ƒŸ¿’â+K£š&/œƒ¦fC–ºk–³¦Z,ƒ¯–’'#›
+(€€€€€€€€€€€€€€€¨ƒ¦v{–³¦Z/¯š"ïW
+3«O£
+K–º&§ŸŠë¢ª7_¾ò#–në–ºk¿š:o/›«¾ò'(€€€€€€€€€€€€€€€¨ƒwOŸšr–"w/
+$ƒ¦fC–ºk–³¦Z,ƒŸ¦‚ó
+(€€€€€€€€€€€€€€€¨¼(€€€€€€€€€€€€€ÍÑ…ÑÕÌèìÁÉ¥Ù…åMÑ…ÑÕÌè€‰Õ¹±¥ÍÑ•ˆ°Í•±™•±…É•‘5…‘•½É-¥‘Ìè™…±Í”ô°(€€€€€€€€€€€ô°(€€€€€€€€€€€Í¥é”°(€€€€€€€€€€€€‰Ù¥‘•¼½µÀĞˆ°(€€€€€€€€€€¤°(€€€€€€€¨¹åÑM•ÍÍ¥½¸°(€€€€€€€…Íå¹Œ€¡Í•ÍÍ¥½¸¤€ôøì(€€€€€€€€€¨¹åÑM•ÍÍ¥½¸€ôÍ•ÍÍ¥½¸ì(€€€€€€€€€…İ…¥ĞÍ…Ù•)½ˆ¡•¹Ø°¨¤ì(€€€€€€€ô°(€€€€€€€½ÕĞ°(€€€€€€€‰•…Ğ°(€€€€€€¤¤…Ìì¥üèÍÑÉ¥¹œìÍÑ…ÑÕÌüèìÁÉ¥Ù…åMÑ…ÑÕÌüèÍÑÉ¥¹œôôì((€€€€€¥˜€ …Ù¥‘•¼¹¥¤Ñ¡É½Ü¹•ÜÉÉ½È ‰e½ÕQÕ‰”ƒ3–.WRï»V«–>ß
+K¢şS_ûo
+Lˆ¤ì(€€€€€¨¹å½ÕÑÕ‰•%€ôÙ¥‘•¼¹¥ì(€€€€€¨¹å½ÕÑÕ‰•UÉ°€ô¡ÑÑÁÌè¼½İİÜ¹å½ÕÑÕ‰”¹½´½İ…Ñ ıØô‘íÙ¥‘•¼¹¥‘õ€ì(€€€€€¨¹ÁÉ¥Ù…ä€ôÙ¥‘•¼¹ÍÑ…ÑÕÌü¹ÁÉ¥Ù…åMÑ…ÑÕÌ€üü€‹’â7šb8ˆì(€€€€€…İ…¥ĞÍ…Ù•)½ˆ¡•¹Ø°¨¤ì(€€€ô((€€€É½İm=0¹å½ÕÑÕ‰•t€ô¨¹å½ÕÑÕ‰•UÉ°…ÌÍÑÉ¥¹œì(€€€½¹ÍĞÁÉ¥Ù…ä€ô¨¹ÁÉ¥Ù…ä€üü€‹’â7šb8ˆì(€€€½¹ÍĞ©À€ôÁÉ¥Ù…ä€ôôô€‰Õ¹±¥ÍÑ•ˆ€ü€‹¦fC–ºk–³¦Z,ˆ€èÁÉ¥Ù…ä€ôôô€‰ÁÉ¥Ù…Ñ”ˆ€ü€‹¦v{–³¦Z,ˆ€èÁÉ¥Ù…äì(€€€½ÕĞ¡€€e½ÕQÕ‰”ƒ–Ó»–³¦Z/¢¢·–ºk¾òh‘í©Áõ€¤ì((€€€€¼¼ƒ¦fC–ºk–³¦Z/Ÿ¦‚ó
+Oƒ»¯¦v{–³¦Z/¯«–‚Ó–B#¿9…½­¤ƒ3š&/ŸnÓo
+/
+#¯–6Ã
+Kšº/d(€€€…İ…¥ĞÍ•Ğ ‹–º3’êˆ°©À€ôôô€‹¦fC–ºk–³¦Z,ˆ€ü€ˆˆ€èe½ÕQÕ‰”ƒ–Óœ€‘í©Áôƒ¯«
++û_š&/œƒ¦fC–ºk–³¦Z,ƒ¯–’'#›?ƒW€¤ì(€€€½ÕĞ¡€€ƒ–º3’ê¾òh‘íÉ½İm=0¹å½ÕÑÕ‰•uõ€¤ì(€ô…Ñ €¡”¤ì(€€€½¹ÍĞİ¡ä€ô”¥¹ÍÑ…¹•½˜ÉÉ½È€ü”¹µ•ÍÍ…”€èMÑÉ¥¹œ¡”¤ì(€€€½ÕĞ¡€€ƒ
+£§ó¾òh‘íİ¡åõ€¤ì(€€€ÑÉäì(€€€€€…İ…¥ĞÍ•Ğ ‹
+£§ğˆ°İ¡ä¹Í±¥” À°€äÀÀ¤¤ì(€€€ô…Ñ ì(€€€€€½ÕĞ ˆ€ƒ
+ßó#ã»šnã7š"ï_¯
+–’ÇšV__û_|ˆ¤ì(€€€ô(€ô)ô()…Íå¹Œ™Õ¹Ñ¥½¸ÉÕ¹±°¡•¹Øè¹Ø°½ÕĞè€¡ÌèÍÑÉ¥¹œ¤€ôøÙ½¥°‰•…Ğè€ ¤€ôøAÉ½µ¥Í”ñÙ½¥ø¤èAÉ½µ¥Í”ñÙ½¥øì(€½¹ÍĞÍÑ…ÉÑ•€ô…Ñ”¹¹½Ü ¤ì((€½¹ÍĞİÌ€ô…İ…¥Ğ…•ÍÍQ½­•¸¡•¹Ø°€‰İ½É­ÍÁ…”ˆ¤ì(€¥˜€ …İÌ¹½¬¤ì(€€€½ÕĞ¡ƒš¶‹û
++û_¾òh‘íİÌ¹İ¡åõ€¤ì(€€€É•ÑÕÉ¸ì(€ô(€½¹ÍĞÍ¥€ô…İ…¥ĞÍ¡••Ñ%¡•¹Ø¤ì(€¥˜€ …Í¥¤ì(€€€½ÕĞ ‹
+ßó#3ûƒ
++ûo
+O½Í•ÑÕÀ½Í¡••Ğƒ
+K¦Z/›’ös›?ƒWˆ¤ì(€€€É•ÑÕÉ¸ì(€ô((€€¼¨¨(€€€¨ƒ¦2ƒ
+K–>[
+3–º¢†3/
+'¢š/
+/£’î[»–º¢†3¿¢ÖÃ›«(€€€¨ƒƒ/
+'3–›B»¦S’â·7»*Ûš/»ûûšº/›
+/¢†3¿–şk–&7»–º¢†33¢B÷‡šº/
++(€€€¨¼(€½¹ÍĞÉ½İÌ€ô…İ…¥ĞÉ•…‘I½İÌ¡İÌ¹Ñ½­•¸°Í¥¤ì(€½¹ÍĞÑ…É•ÑÌèì¹¼è¹Õµ‰•ÈìÉ½ÜèÍÑÉ¥¹mtìİ¡äèÍÑÉ¥¹œõmt€ômtì(€É½İÌ¹™½É…  ¡É½Ü°¤¤€ôøì(€€€½¹ÍĞÍ¡…É”€ô€¡É½İm=0¹Í¡…É•t€üü€ˆˆ¤¹ÑÉ¥´ ¤ì(€€€½¹ÍĞÍÑ…Ñ”€ô€¡É½İm=0¹ÍÑ…Ñ•t€üü€ˆˆ¤¹ÑÉ¥´ ¤ì(€€€¥˜€ …Í¡…É”¤É•ÑÕÉ¸ì(€€€¥˜€¡ÍÑ…Ñ”€ôôô€ˆˆñğÍÑ…Ñ”€ôôô€‹šr«–›Bˆ¤Ñ…É•ÑÌ¹ÁÕÍ ¡ì¹¼è¤€¬€È°É½Ü°İ¡äè€‹šr«–›Bˆô¤ì(€€€•±Í”¥˜€¡ÍÑ…Ñ”€ôôô€‹
+£§ğˆ¤Ñ…É•ÑÌ¹ÁÕÍ ¡ì¹¼è¤€¬€È°É½Ü°İ¡äè€‹–&7»
+£§ó/
+'
+
++nÓ\ˆô¤ì(€€€•±Í”¥˜€¡5%]d¹¥¹±Õ‘•Ì¡ÍÑ…Ñ”¤¤Ñ…É•ÑÌ¹ÁÕÍ ¡ì¹¼è¤€¬€È°É½Ü°İ¡äè€‘íÍÑ…Ñ•ôƒ»ûûš¶‹û›Úk5€ô¤ì(€ô¤ì((€½ÕĞ¡ƒ¦kg¢†3¾òh‘íÑ…É•ÑÌ¹±•¹Ñ¡ôƒ’îÙ€¤ì(€½ÕĞ ˆˆ¤ì((€™½È€¡½¹ÍĞĞ½˜Ñ…É•ÑÌ¤ì(€€€¥˜€¡…Ñ”¹¹½Ü ¤€´ÍÑ…ÉÑ•€øIU9}	UQ}5L¤ì(€€€€€½ÕĞ¡ƒOOŸ’â–ê›VÏÿûg¾ò ‘íÍ•Œ¡…Ñ”¹¹½Ü ¤€´ÍÑ…ÉÑ•¥ôƒK¾ò'šº/
++¿š²‡»¢«–.W–º¢†33ÚkGûg	€¤ì(€€€€€É•ÑÕÉ¸ì(€€€ô(€€€½ÕĞ¡ƒ¾ò ‘íĞ¹İ¡å÷¾ò%€¤ì(€€€…İ…¥ĞÁÉ½•ÍÍI½Ü¡•¹Ø°İÌ¹Ñ½­•¸°Í¥°Ğ¹¹¼°Ğ¹É½Ü°½ÕĞ°‰•…Ğ¤ì(€€€½ÕĞ ˆˆ¤ì(€ô(€ÑÉäì(€€€½¹ÍĞµ…¹…•€ô…İ…¥ĞÍå¹5…¹…•M¡••Ğ¡•¹Ø°İÌ¹Ñ½­•¸°Í¥¤ì(€€€½ÕĞ (€€€€€ƒº‡B
+ßó#¾òh‘íµ…¹…•¹µ…‘”€ü€‹’ösš"@ˆ€è€‹š^‹–¶`‰÷¾ò?¢ş÷–*€€‘íµ…¹…•¹…‘‘•‘ôƒ’îÛ¾ò?šnÓšZÀ€‘íµ…¹…•¹ÕÁ‘…Ñ•‘ôƒ’îÛ¾ò=€€¬(€€€€€€€ƒ–’'šnÓ«\€‘íµ…¹…•¹Õ¹¡…¹•‘ôƒ’îÛ¾ò?–"—»–æĞ€‘íµ…¹…•¹Í­¥ÁÁ•‘e•…Éôƒ’îÛ¾ò=€€¬(€€€€€€€ƒ–—
+3–#
+KšÆë
+
+'
+3«/|€‘íµ…¹…•¹Õ¹‘•¥‘…‰±••ÍÑ¥¹…Ñ¥½¹ôƒ’îÛ¾ò?¦ë73‡?›–—
+3
+'
+3«/|€‘íµ…¹…•¹¹½MÁ…•ôƒ’îÛ¾ò?’ê#–ºk»¢†3ã–B#
+?o|€‘íµ…¹…•¹µ•É•‘ôƒ’îÙ€°(€€€€¤ì(€ô…Ñ €¡”¤ì(€€€½ÕĞ¡ƒº‡B
+ßó#ã»–>7šbƒ¯–’ÇšV_¾òh‘í”¥¹ÍÑ…¹•½˜ÉÉ½È€ü”¹µ•ÍÍ…”€èMÑÉ¥¹œ¡”¥õ€¤ì(€ô(€ÑÉäì(€€€½¹ÍĞ½¹Ñ•¹Ğ€ô…İ…¥ĞÍå¹½¹Ñ•¹Ñ=Ì¡•¹Ø°İÌ¹Ñ½­•¸¤ì(€€€¥˜€¡½¹Ñ•¹Ğ¹µ¥ÍÍ¥¹M•ÑÑ¥¹Ì¤ì(€€€€€½ÕĞ ‹
+ÏÏÏ?
+O»¢¢·–ºk–“3¢ÚÏ
++«»Ÿ–¾oûo
+OŸ_|ˆ¤ì(€€€ô•±Í”ì(€€€€€½ÕĞ (€€€€€€€ƒ
+ÏÏÏ?
+O¾òk’ös|€‘í½¹Ñ•¹Ğ¹É•…Ñ•‘ôƒ’îÛ¾ò?*Ûš/
+K–g_|€‘í½¹Ñ•¹Ğ¹ÍÑ…ÑÕÍUÁ‘…Ñ•‘ôƒ’îÛ¾ò=€€¬(€€€€€€€€€ƒ–’'
+?
+'«/|€‘í½¹Ñ•¹Ğ¹Õ¹¡…¹•‘ôƒ’îÛ¾ò?šzƒ
+K’ös
+3«/|€‘í½¹Ñ•¹Ğ¹É•…Ñ•…¥±•‘ôƒ’îÛ¾ò=€€¬(€€€€€€€€€ƒš*W¢ÿ3¢š/“/
+'«/|€‘í½¹Ñ•¹Ğ¹Á½ÍÑ9½Ñ½Õ¹‘ôƒ’îÙ€°(€€€€€€¤ì(€€€ô(€ô…Ñ €¡”¤ì(€€€½ÕĞ¡ƒ
+ÏÏÏ?
+Oã»–>7šbƒ¯–’ÇšV_¾òh‘í”¥¹ÍÑ…¹•½˜ÉÉ½È€ü”¹µ•ÍÍ…”€èMÑÉ¥¹œ¡”¥õ€¤ì(€ô(€ÑÉäì(€€€½¹ÍĞµ…¹…‰Ô€ô…İ…¥ĞÍå¹5…¹…‰Ô¡•¹Ø°İÌ¹Ñ½­•¸°Í¥¤ì(€€€¥˜€¡µ…¹…‰Ô¹µ¥ÍÍ¥¹M•ÑÑ¥¹Ì¤ì(€€€€€½ÕĞ ‹–¶›Û?
+O»¢¢·–ºk–“3¢ÚÏ
++«»Ÿ–—
+3ûo
+OŸ_|ˆ¤ì(€€€ô•±Í”ì(€€€€€½ÕĞ¡ƒ–¶›Û?
+O¾òk–—
+3|€‘íµ…¹…‰Ô¹ÁÕÑôƒ’îÛ¾ò?–’ÇšV\€‘íµ…¹…‰Ô¹™…¥±•‘ôƒ’îÛ¾ò?–.WRï»’ö?š&
+K–ú›
+,€‘íµ…¹…‰Ô¹İ…¥Ñ¥¹Y¥‘•½ôƒ’îÙ€¤ì(€€€ô(€ô…Ñ €¡”¤ì(€€€½ÕĞ¡ƒ–¶›Û?
+Oã»–>7šbƒ¯–’ÇšV_¾òh‘í”¥¹ÍÑ…¹•½˜ÉÉ½È€ü”¹µ•ÍÍ…”€èMÑÉ¥¹œ¡”¥õ€¤ì(€ô(€½ÕĞ ‹OOûŸŸgˆ¤ì)ô((¼¨¨(€¨ƒ–B3šf¯¢ÖÃ
+'«
+#¯g
+/¾ò ×–"S£»¢«–.W–º¢†3£š&/–.W3¦7«
+'«
+¾ò'(€¨ƒ¦2ƒ¿–.W›
+/¦ZOk£š*ó_nÓgÏ–"š*óW
+3›«G
+3Ã–&7»–º¢†3¿¢B÷‡
+»£ÿ«_›–òW7–>[
+/(€¨¼)…Íå¹Œ™Õ¹Ñ¥½¸İ¥Ñ¡1½¬ (€•¹Øè¹Ø°(€™¸è€¡‰•…Ğè€ ¤€ôøAÉ½µ¥Í”ñÙ½¥ø¤€ôøAÉ½µ¥Í”ñÙ½¥ø°(€½ÕĞè€¡ÌèÍÑÉ¥¹œ¤€ôøÙ½¥°(¤èAÉ½µ¥Í”ñÙ½¥øì(€½¹ÍĞ¡•±€ô…İ…¥Ğ•¹Ø¹MQ=I¹•Ğ¡1=-}-d¤ì(€¥˜€¡¡•±¤ì(€€€½¹ÍĞ…Ğ€ô9Õµ‰•È¡…İ…¥Ğ¡•±¹Ñ•áĞ ¤¤ì(€€€¥˜€¡…Ñ”¹¹½Ü ¤€´…Ğ€ğ1=-}MQ1}5L¤ì(€€€€€½ÕĞ ‹û–"—»–›B3–.W›ûgÖ
+?
+/ûŸ–ú›?ƒWˆ¤ì(€€€€€É•ÑÕÉ¸ì(€€€ô(€€€½ÕĞ ‹–&7»–›B3¢B÷‡ûûšº/›»Ÿ–òW7–>[
++ûgˆ¤ì(€ô((€½¹ÍĞ‰•…Ğ€ô…Íå¹Œ€ ¤€ôøì(€€€…İ…¥Ğ•¹Ø¹MQ=I¹ÁÕĞ¡1=-}-d°MÑÉ¥¹œ¡…Ñ”¹¹½Ü ¤¤¤ì(€ôì((€…İ…¥Ğ‰•…Ğ ¤ì(€ÑÉäì(€€€…İ…¥Ğ™¸¡‰•…Ğ¤ì(€ô™¥¹…±±äì(€€€…İ…¥Ğ•¹Ø¹MQ=I¹‘•±•Ñ”¡1=-}-d¤ì(€ô)ô((¼¨€ôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôô€¨¼(¼¨ƒ¢¢Ç–>¼€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¨¼(¼¨€ôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôô€¨¼()…Íå¹Œ™Õ¹Ñ¥½¸½…ÕÑ¡MÑ…ÉĞ¡É•ÅÕ•ÍĞèI•ÅÕ•ÍĞ°•¹Øè¹Ø¤èAÉ½µ¥Í”ñI•ÍÁ½¹Í”øì(€½¹ÍĞµ¥ÍÍ¥¹œ€ôµ¥ÍÍ¥¹M•ÑÕÀ¡•¹Ø¤ì(€¥˜€¡µ¥ÍÍ¥¹œ¹±•¹Ñ €ø€À¤ì(€€€É•ÑÕÉ¸Ñ•áĞ (€€€€€l‹¢¢·–ºk3¢ÚÏ
++ûo
+O	±½Õ‘™±…É”ƒ¸M•ÑÑ¥¹ÌƒŠHY…É¥…‰±•Ì…¹M•É•ÑÌƒœQåÁ”èM•É•Ğƒ£_›–—
+3›?ƒWˆ°€ˆˆ°€¸¸¹µ¥ÍÍ¥¹œ¹µ…À ¡´¤€ôø€ˆ€ƒìˆ€¬´¥t¹©½¥¸ ‰q¸ˆ¤°(€€€€€€ÔÀÀ°(€€€€¤ì(€ô((€½¹ÍĞİ¡¥ €ô¹•ÜUI0¡É•ÅÕ•ÍĞ¹ÕÉ°¤¹Í•…É¡A…É…µÌ¹•Ğ ‰™½Èˆ¤ì(€¥˜€ …¥ÍA•Éµ¥Ñ9…µ”¡İ¡¥ ¤¤ì(€€€É•ÑÕÉ¸Ñ•áĞ (€€€€€l(€€€€€€€€‹¢¢Ç–>¿¼Ë–n{¯–"G›–ë_ûgˆ°(€€€€€€€€ˆˆ°(€€€€€€€€ˆ€€Çšr³n»¾òk'§
+“[ã’şw–¶c_
+ßó#¯šnã7š"ïg¢¢Ç–>¼ˆ°(€€€€€€€€ˆ€€€€€ƒ×ƒ
+O¸½½±”ƒ
+‹
+¯
+›Ï#
+K¦ãØˆ°(€€€€€€€€€€€€€€‘í¹•ÜUI0 ˆ½½…ÕÑ ½ÍÑ…ÉĞı™½Èõİ½É­ÍÁ…”ˆ°É•ÅÕ•ÍĞ¹ÕÉ°¤¹Ñ½MÑÉ¥¹œ ¥õ€°(€€€€€€€€ˆˆ°(€€€€€€€€ˆ€€Ëšr³n»¾òie½ÕQÕ‰”ƒã–.WRï
+K’â+K
+/¢¢Ç–>¼ˆ°(€€€€€€€€ˆ€€€€€ƒ’â+K–#»Ï7¯»[§Ï'
+‹
+¯
+›Ï#
+K¦ãØˆ°(€€€€€€€€€€€€€€‘í¹•ÜUI0 ˆ½½…ÕÑ ½ÍÑ…ÉĞı™½Èõå½ÕÑÕ‰”ˆ°É•ÅÕ•ÍĞ¹ÕÉ°¤¹Ñ½MÑÉ¥¹œ ¥õ€°(€€€€€t¹©½¥¸ ‰q¸ˆ¤°(€€€€¤ì(€ô((€½¹ÍĞÁ•Éµ¥Ğ€ôAI5%QMmİ¡¥¡tì(€½¹ÍĞÍÑ…Ñ”€ôÉåÁÑ¼¹É…¹‘½µUU% ¤ì(€…İ…¥Ğ•¹Ø¹MQ=I¹ÁÕĞ¡…ÕÑ ½ÍÑ…Ñ”¼‘íÍÑ…Ñ•õ€°İ¡¥ ¤ì((€½¹ÍĞ…ÕÑ €ô¹•ÜUI0 ‰¡ÑÑÁÌè¼½…½Õ¹ÑÌ¹½½±”¹½´½¼½½…ÕÑ È½ØÈ½…ÕÑ ˆ¤ì(€…ÕÑ ¹Í•…É¡A…É…µÌ¹Í•Ğ ‰±¥•¹Ñ}¥ˆ°•¹Ø¹==1}1%9Q}%…ÌÍÑÉ¥¹œ¤ì(€…ÕÑ ¹Í•…É¡A…É…µÌ¹Í•Ğ ‰É•‘¥É•Ñ}ÕÉ¤ˆ°¹•ÜUI0 ˆ½½…ÕÑ ½…±±‰…¬ˆ°É•ÅÕ•ÍĞ¹ÕÉ°¤¹Ñ½MÑÉ¥¹œ ¤¤ì(€…ÕÑ ¹Í•…É¡A…É…µÌ¹Í•Ğ ‰É•ÍÁ½¹Í•}ÑåÁ”ˆ°€‰½‘”ˆ¤ì(€…ÕÑ ¹Í•…É¡A…É…µÌ¹Í•Ğ ‰Í½Á”ˆ°Á•Éµ¥Ğ¹Í½Á•Ì¤ì(€…ÕÑ ¹Í•…É¡A…É…µÌ¹Í•Ğ ‰…•ÍÍ}ÑåÁ”ˆ°€‰½™™±¥¹”ˆ¤ì(€…ÕÑ ¹Í•…É¡A…É…µÌ¹Í•Ğ ‰ÁÉ½µÁĞˆ°€‰½¹Í•¹Ğˆ¤ì(€…ÕÑ ¹Í•…É¡A…É…µÌ¹Í•Ğ ‰ÍÑ…Ñ”ˆ°ÍÑ…Ñ”¤ì(€É•ÑÕÉ¸I•ÍÁ½¹Í”¹É•‘¥É•Ğ¡…ÕÑ ¹Ñ½MÑÉ¥¹œ ¤°€ÌÀÈ¤ì)ô()…Íå¹Œ™Õ¹Ñ¥½¸½…ÕÑ¡…±±‰…¬¡É•ÅÕ•ÍĞèI•ÅÕ•ÍĞ°•¹Øè¹Ø¤èAÉ½µ¥Í”ñI•ÍÁ½¹Í”øì(€½¹ÍĞÕÉ°€ô¹•ÜUI0¡É•ÅÕ•ÍĞ¹ÕÉ°¤ì(€½¹ÍĞ•ÉÈ€ôÕÉ°¹Í•…É¡A…É…µÌ¹•Ğ ‰•ÉÉ½Èˆ¤ì(€¥˜€¡•ÉÈ¤É•ÑÕÉ¸Ñ•áĞ¡½½±”ƒ–ÓŸ¢¢Ç–>¿3–ëûo
+OŸ_	q¹q»BRÇ¾òh‘í•ÉÉõ€°€ĞÀÀ¤ì((€½¹ÍĞ½‘”€ôÕÉ°¹Í•…É¡A…É…µÌ¹•Ğ ‰½‘”ˆ¤ì(€½¹ÍĞÍÑ…Ñ”€ôÕÉ°¹Í•…É¡A…É…µÌ¹•Ğ ‰ÍÑ…Ñ”ˆ¤ì(€¥˜€ …½‘”ñğ€…ÍÑ…Ñ”¤É•ÑÕÉ¸Ñ•áĞ ‹¢¢Ç–>¿»–>_G–>[
++¯–ş¢š«–“3
++ûo
+Oˆ°€ĞÀÀ¤ì((€½¹ÍĞ¡•±‘=‰¨€ô…İ…¥Ğ•¹Ø¹MQ=I¹•Ğ¡…ÕÑ ½ÍÑ…Ñ”¼‘íÍÑ…Ñ•õ€¤ì(€½¹ÍĞ¡•±€ô¡•±‘=‰¨€ü…İ…¥Ğ¡•±‘=‰¨¹Ñ•áĞ ¤€è¹Õ±°ì(€¥˜€ …¡•±ñğ€…¥ÍA•Éµ¥Ñ9…µ”¡¡•±¤¤É•ÑÕÉ¸Ñ•áĞ ‹–B#¢¢¢F'3–B#ûo
+O½½…ÕÑ ½ÍÑ…ÉĞƒ/
+'
+
++nÓ_›?ƒWˆ°€ĞÀÀ¤ì(€…İ…¥Ğ•¹Ø¹MQ=I¹‘•±•Ñ”¡…ÕÑ ½ÍÑ…Ñ”¼‘íÍÑ…Ñ•õ€¤ì(€½¹ÍĞÁ•Éµ¥Ğ€ôAI5%QMm¡•±‘tì((€½¹ÍĞÉ•‘¥É•ÑUÉ¤€ô¹•ÜUI0 ˆ½½…ÕÑ ½…±±‰…¬ˆ°É•ÅÕ•ÍĞ¹ÕÉ°¤¹Ñ½MÑÉ¥¹œ ¤ì(€½¹ÍĞÉ•Ì€ô…İ…¥Ğ™•Ñ  ‰¡ÑÑÁÌè¼½½…ÕÑ È¹½½±•…Á¥Ì¹½´½Ñ½­•¸ˆ°ì(€€€µ•Ñ¡½è€‰A=MPˆ°(€€€¡•…‘•ÉÌèì€‰½¹Ñ•¹ĞµÑåÁ”ˆè€‰…ÁÁ±¥…Ñ¥½¸½àµİİÜµ™½É´µÕÉ±•¹½‘•ˆô°(€€€‰½‘äè¹•ÜUI1M•…É¡A…É…µÌ¡ì(€€€€€½‘”°(€€€€€±¥•¹Ñ}¥è•¹Ø¹==1}1%9Q}%…ÌÍÑÉ¥¹œ°(€€€€€±¥•¹Ñ}Í•É•Ğè•¹Ø¹==1}1%9Q}MIP…ÌÍÑÉ¥¹œ°(€€€€€É•‘¥É•Ñ}ÕÉ¤èÉ•‘¥É•ÑUÉ¤°(€€€€€É…¹Ñ}ÑåÁ”è€‰…ÕÑ¡½É¥é…Ñ¥½¹}½‘”ˆ°(€€€ô¤°(€ô¤ì(€½¹ÍĞ‰½‘ä€ô€¡…İ…¥ĞÉ•Ì¹©Í½¸ ¤¤…Ìì(€€€É•™É•Í¡}Ñ½­•¸üèÍÑÉ¥¹œì(€€€…•ÍÍ}Ñ½­•¸üèÍÑÉ¥¹œì(€€€¥‘}Ñ½­•¸üèÍÑÉ¥¹œì(€€€Í½Á”üèÍÑÉ¥¹œì(€€€•ÉÉ½ÈüèÍÑÉ¥¹œì(€€€•ÉÉ½É}‘•ÍÉ¥ÁÑ¥½¸üèÍÑÉ¥¹œì(€ôì(€¥˜€ …É•Ì¹½¬¤ì(€€€É•ÑÕÉ¸Ñ•áĞ (€€€€€½½±”ƒ£»–òW7š>o#¯–’ÇšV__û_	q¹q¸‘í‰½‘ä¹•ÉÉ½È€üüÉ•Ì¹ÍÑ…ÑÕÍ÷¾ò<‘í‰½‘ä¹•ÉÉ½É}‘•ÍÉ¥ÁÑ¥½¸€üü€‹¢ª³šb;«\‰õq¹q»š"ï
++–#»’ö?š&¾òh‘íÉ•‘¥É•ÑUÉ¥õ€°(€€€€€€ĞÀÀ°(€€€€¤ì(€ô(€¥˜€ …‰½‘ä¹É•™É•Í¡}Ñ½­•¸¤ì(€€€É•ÑÕÉ¸Ñ•áĞ (€€€€€€‹šnÓšZÃR£»¦6×3¢şS
++ûo
+OŸ_	q¹q¹¡ÑÑÁÌè¼½µå…½Õ¹Ğ¹½½±”¹½´½Á•Éµ¥ÍÍ¥½¹Ìƒœé½½´µÑ¼µå½ÕÑÕ‰”ƒ
+K–>[
++šÚ#_›/
+'
+
++nÓ_›?ƒWˆ°(€€€€€€ĞÀÀ°(€€€€¤ì(€ô((€½¹ÍĞÍÑ½É•èMÑ½É•‘ÕÑ €ôì(€€€É•™É•Í¡}Ñ½­•¸è‰½‘ä¹É•™É•Í¡}Ñ½­•¸°(€€€Í½Á”è‰½‘ä¹Í½Á”€üü€ˆˆ°(€€€½‰Ñ…¥¹•‘}…Ğè¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤°(€ôì(€±•Ğİ¡¼èÍÑÉ¥¹œì((€¥˜€¡¡•±€ôôô€‰İ½É­ÍÁ…”ˆ¤ì(€€€½¹ÍĞ•µ…¥°€ô€¡É•…‘%‘Q½­•¸¡‰½‘ä¹¥‘}Ñ½­•¸€üü€ˆˆ¤¹•µ…¥°€üü€ˆˆ¤¹Ñ½1½İ•É…Í” ¤ì(€€€¥˜€ …•µ…¥°ñğ•µ…¥°€„ôô€¡•¹Ø¹11=]}5%0…ÌÍÑÉ¥¹œ¤¹ÑÉ¥´ ¤¹Ñ½1½İ•É…Í” ¤¤ì(€€€€€É•ÑÕÉ¸Ñ•áĞ¡ƒO»
+‹
+¯
+›Ï#»¢¢Ç–>¿¿–>_G’îcGûo
+Oš:Ÿ#¿’şw–¶c_›ûo
+O	q¹q»–ë_
+‹
+¯
+›Ï#¾òh‘í•µ…¥°ñğ€‹¾ò#’â7šb;¾ò$‰õ€°€ĞÀÌ¤ì(€€€ô(€€€ÍÑ½É•¹•µ…¥°€ô•µ…¥°ì(€€€İ¡¼€ô•µ…¥°ì(€ô•±Í”ì(€€€¥˜€ …‰½‘ä¹…•ÍÍ}Ñ½­•¸¤É•ÑÕÉ¸Ñ•áĞ ‹’öÿš6£›»¦6×3¢şS
++ûo
+OŸ_ˆ°€ĞÀÀ¤ì(€€€½¹ÍĞ¡I•Ì€ô…İ…¥Ğ•Ñ ¡‰½‘ä¹…•ÍÍ}Ñ½­•¸°€‰¡ÑÑÁÌè¼½İİÜ¹½½±•…Á¥Ì¹½´½å½ÕÑÕ‰”½ØÌ½¡…¹¹•±ÌıÁ…ÉĞõÍ¹¥ÁÁ•Ğ™µ¥¹”õÑÉÕ”ˆ¤ì(€€€½¹ÍĞÉ…Ü€ô…İ…¥Ğ¡I•Ì¹Ñ•áĞ ¤ì(€€€±•Ğ èì¥üèÍÑÉ¥¹œìÍ¹¥ÁÁ•ĞüèìÑ¥Ñ±”üèÍÑÉ¥¹œôôğÕ¹‘•™¥¹•ì(€€€ÑÉäì(€€€€€ €ô€¡)M=8¹Á…ÉÍ”¡É…Ü¤…Ìì¥Ñ•µÌüèì¥üèÍÑÉ¥¹œìÍ¹¥ÁÁ•ĞüèìÑ¥Ñ±”üèÍÑÉ¥¹œôõmtô¤¹¥Ñ•µÌü¹lÁtì(€€€ô…Ñ ì(€€€€€€¼¨ƒ’â/œÉ…Üƒ
+K–ëd€¨¼(€€€ô(€€€¥˜€ …¡I•Ì¹½¬ñğ€… ü¹¥¤ì(€€€€€É•ÑÕÉ¸Ñ•áĞ¡ƒ§»Ï7¯/
+KŠë/
+
+'
+3ûo
+OŸ_š:Ÿ#¿’şw–¶c_›ûo
+O	q¹q¸‘í¡I•Ì¹ÍÑ…ÑÕÍõq¸‘íÉ…Ü¹Í±¥” À°€ÄÔÀÀ¥õ€°€ĞÀÀ¤ì(€€€ô(€€€½¹ÍĞÁÉ•Ø€ô…İ…¥Ğ•¹Ø¹MQ=I¹•Ğ¡Á•Éµ¥Ğ¹­•ä¤ì(€€€¥˜€¡ÁÉ•Ø¤ì(€€€€€½¹ÍĞ‰•™½É”€ô)M=8¹Á…ÉÍ”¡…İ…¥ĞÁÉ•Ø¹Ñ•áĞ ¤¤…ÌMÑ½É•‘ÕÑ ì(€€€€€¥˜€¡‰•™½É”¹¡…¹¹•±}¥€˜˜‰•™½É”¹¡…¹¹•±}¥€„ôô ¹¥¤ì(€€€€€€€É•ÑÕÉ¸Ñ•áĞ (€€€€€€€€€ƒ–#¯fï¦2Ë_›
+/Ï7¯£¦W
+–Ş»_šnÿ#ûo
+OŸ_	q¹q»fï¦2Ëšâ#ÿ¾òh‘í‰•™½É”¹¡…¹¹•±}Ñ¥Ñ±•õq»’î+–n{¾òh‘í ¹Í¹¥ÁÁ•Ğü¹Ñ¥Ñ±•õ€°(€€€€€€€€€€ĞÀä°(€€€€€€€€¤ì(€€€€€ô(€€€ô(€€€ÍÑ½É•¹¡…¹¹•±}¥€ô ¹¥ì(€€€ÍÑ½É•¹¡…¹¹•±}Ñ¥Ñ±”€ô ¹Í¹¥ÁÁ•Ğü¹Ñ¥Ñ±”€üü€ˆˆì(€€€İ¡¼€ô€‘íÍÑ½É•¹¡…¹¹•±}Ñ¥Ñ±•÷¾ò ‘í ¹¥‘÷¾ò%€ì(€ô((€…İ…¥Ğ•¹Ø¹MQ=I¹ÁÕĞ¡Á•Éµ¥Ğ¹­•ä°)M=8¹ÍÑÉ¥¹¥™ä¡ÍÑ½É•¤¤ì(€½¹ÍĞ½Ñ¡•ÈèA•Éµ¥Ñ9…µ”€ô¡•±€ôôô€‰å½ÕÑÕ‰”ˆ€ü€‰İ½É­ÍÁ…”ˆ€è€‰å½ÕÑÕ‰”ˆì(€½¹ÍĞ½Ñ¡•É½¹”€ô€¡…İ…¥Ğ•¹Ø¹MQ=I¹¡•…¡AI5%QMm½Ñ¡•Ét¹­•ä¤¤€„ôô¹Õ±°ì((€É•ÑÕÉ¸Ñ•áĞ (€€€l(€€€€€ƒ’şw–¶c_û_¾òh‘íÁ•Éµ¥Ğ¹±…‰•±õ€°(€€€€€€ˆˆ°(€€€€€ƒ–¾û¢Æ‡¾òh‘íİ¡½õ€°(€€€€€ƒ’şw–¶c_š^—šf¾òh‘íÍÑ½É•¹½‰Ñ…¥¹•‘}…Ñõ€°(€€€€€€ˆˆ°(€€€€€½Ñ¡•É½¹”(€€€€€€€€ü€ˆËšr³£
+Ö
+?
++û_O»Rï¦v‹¿¦Z'c›–’Ÿ’â#–’¯Ÿgˆ(€€€€€€€€èƒšº/
+(Çšr³
++ûg	q¹q¸€€‘íAI5%QMm½Ñ¡•Ét¹±…‰•±õq¸€€€€€€‘í¹•ÜUI0 ˆ½½…ÕÑ ½ÍÑ…ÉĞı™½Èôˆ€¬½Ñ¡•È°É•ÅÕ•ÍĞ¹ÕÉ°¤¹Ñ½MÑÉ¥¹œ ¥õ€°(€€€t¹©½¥¸ ‰q¸ˆ¤°(€€¤ì)ô()…Íå¹Œ™Õ¹Ñ¥½¸½…ÕÑ¡MÑ…ÑÕÌ¡•¹Øè¹Ø¤èAÉ½µ¥Í”ñI•ÍÁ½¹Í”øì(€½¹ÍĞµ¥ÍÍ¥¹œ€ôµ¥ÍÍ¥¹M•ÑÕÀ¡•¹Ø¤ì(€½¹ÍĞ±¥¹•Ì€ôlˆ´´´ƒ¢¢Ç–>¿»*Ûš,€´´´ˆ°€ˆˆ°ƒ¢¢·–ºk¸Ï“ ‘íµ¥ÍÍ¥¹œ¹±•¹Ñ €ôôô€À€ü€‹w
+7›
+,ˆ€è€‹¢ÚÏ
++«¾òhˆ€¬µ¥ÍÍ¥¹œ¹©½¥¸ ˆ°€ˆ¥õ€°€ˆ‰tì((€™½È€¡½¹ÍĞİ¡¥ ½˜l‰İ½É­ÍÁ…”ˆ°€‰å½ÕÑÕ‰”‰t…ÌA•Éµ¥Ñ9…µ•mt¤ì(€€€±¥¹•Ì¹ÁÕÍ ¡ƒŠZ€€‘íAI5%QMmİ¡¥¡t¹±…‰•±õ€¤ì(€€€½¹ÍĞ½‰¨€ô…İ…¥Ğ•¹Ø¹MQ=I¹•Ğ¡AI5%QMmİ¡¥¡t¹­•ä¤ì(€€€¥˜€ …½‰¨¤ì(€€€€€±¥¹•Ì¹ÁÕÍ ¡€€€€ƒš:Ÿ#ûƒ‡¾ò ½½…ÕÑ ½ÍÑ…ÉĞı™½Èô‘íİ¡¥¡÷¾ò%€¤ì(€€€€€±¥¹•Ì¹ÁÕÍ  ˆˆ¤ì(€€€€€½¹Ñ¥¹Õ”ì(€€€ô(€€€½¹ÍĞÍ…Ù•€ô)M=8¹Á…ÉÍ”¡…İ…¥Ğ½‰¨¹Ñ•áĞ ¤¤…ÌMÑ½É•‘ÕÑ ì(€€€½¹ÍĞ‘…åÌ€ô5…Ñ ¹™±½½È ¡…Ñ”¹¹½Ü ¤€´…Ñ”¹Á…ÉÍ”¡Í…Ù•¹½‰Ñ…¥¹•‘}…Ğ¤¤€¼€àØĞÀÀÀÀÀ¤€¬€Äì(€€€±¥¹•Ì¹ÁÕÍ ¡€€€€ƒš:Ÿ#
+/¾ò ‘íÍ…Ù•¹½‰Ñ…¥¹•‘}…Ñ÷ï–>[–ú_/
+$€‘í‘…åÍôƒš^—n»¾ò%€¤ì(€€€±¥¹•Ì¹ÁÕÍ ¡€€€€ƒ–¾û¢Æ‡ ‘íÍ…Ù•¹•µ…¥°€üüÍ…Ù•¹¡…¹¹•±}Ñ¥Ñ±”€üü€‹¾ò#’â7šb;¾ò$‰õ€¤ì(€€€¥˜€¡µ¥ÍÍ¥¹œ¹±•¹Ñ €ôôô€À¤ì(€€€€€½¹ÍĞĞ€ô…İ…¥Ğ…•ÍÍQ½­•¸¡•¹Ø°İ¡¥ ¤ì(€€€€€±¥¹•Ì¹ÁÕÍ ¡€€€€ƒû’öÿ#
+// ‘íĞ¹½¬€ü€‹’öÿ#
+,ˆ€è€‹’öÿ#«¾òhˆ€¬Ğ¹İ¡åõ€¤ì(€€€ô(€€€±¥¹•Ì¹ÁÕÍ  ˆˆ¤ì(€ô((€±¥¹•Ì¹ÁÕÍ  ‹ŠZ€i½½´ƒšr³’öO»–>¾ò#–"/
+3›
+/¦2ËRï
+K
+£§ó¯g
+/
+¯’öÿ¾ò$ˆ¤ì(€½¹ÍĞé´€ôµ¥ÍÍ¥¹i½½´¡•¹Ø¤ì(€±¥¹•Ì¹ÁÕÍ ¡€€€€ƒ¢¢·–ºk¸Ï“ ‘íé´¹±•¹Ñ €ôôô€À€ü€‹w
+7›
+,ˆ€è€‹¢ÚÏ
++«¾òhˆ€¬é´¹©½¥¸ ˆ°€ˆ¥õ€¤ì(€¥˜€¡é´¹±•¹Ñ €ôôô€À¤ì(€€€ÑÉäì(€€€€€…İ…¥Ğé½½µQ½­•¸¡•¹Ø¤ì(€€€€€±¥¹•Ì¹ÁÕÍ  ˆ€€€ƒû’öÿ#
+//’öÿ#
+,ˆ¤ì(€€€ô…Ñ €¡”¤ì(€€€€€±¥¹•Ì¹ÁÕÍ ¡€€€€ƒû’öÿ#
+//’öÿ#«¾òh‘í”¥¹ÍÑ…¹•½˜ÉÉ½È€ü”¹µ•ÍÍ…”€èMÑÉ¥¹œ¡”¥õ€¤ì(€€€ô(€ô(€±¥¹•Ì¹ÁÕÍ  ˆˆ¤ì((€½¹ÍĞÍ¥€ô…İ…¥ĞÍ¡••Ñ%¡•¹Ø¤ì(€±¥¹•Ì¹ÁÕÍ  ‹ŠZ€ƒº‡BR£
+ßó ˆ¤ì(€±¥¹•Ì¹ÁÕÍ ¡Í¥€ü€€€€¡ÑÑÁÌè¼½‘½Ì¹½½±”¹½´½ÍÁÉ•…‘Í¡••ÑÌ½¼‘íÍ¥‘ô½•‘¥Ñ€€è€ˆ€€€ƒûƒ‡¾ò ½Í•ÑÕÀ½Í¡••ĞƒŸ’ös
+/¾ò$ˆ¤ì(€±¥¹•Ì¹ÁÕÍ  ˆˆ¤ì(€±¥¹•Ì¹ÁÕÍ  ‹O»Rï¦v‹¯¦6×w»
+»¿¢†£’ë_ûo
+Oˆ¤ì(€É•ÑÕÉ¸Ñ•áĞ¡±¥¹•Ì¹©½¥¸ ‰q¸ˆ¤¤ì)ô((¼¨¨(€¨ƒ–Çšr'«Ï
+¿
+HÇšr³šâ‡g£šr³’öO3’öWšr³
+//ƒG
+KšVÃ#›¢şSg(€¨ƒ’öW
+’â+K«_
+ßó#¯
+¢›
+'«–"/
+3›
+//»Šë¢ª7ƒG¯’öÿ(€¨¼)…Íå¹Œ™Õ¹Ñ¥½¸é½½µ¡•¬¡É•ÅÕ•ÍĞèI•ÅÕ•ÍĞ°•¹Øè¹Ø¤èAÉ½µ¥Í”ñI•ÍÁ½¹Í”øì(€½¹ÍĞÍ¡…É”€ô¹•ÜUI0¡É•ÅÕ•ÍĞ¹ÕÉ°¤¹Í•…É¡A…É…µÌ¹•Ğ ‰Í¡…É”ˆ¤ì(€¥˜€ …Í¡…É”¤ì(€€€É•ÑÕÉ¸Ñ•áĞ ‹’öÿšZç¾òh½é½½´½¡•¬ıÍ¡…É”õi½½·»–Çšr'«Ï
+½q¹q»’öW
+’â+Kûo
+Ošr³’öO3’öWšr³
+//
+KšVÃ#
+/ƒGŸgˆ°€ĞÀÀ¤ì(€ô((€ÑÉäì(€€€½¹ÍĞè€ô…İ…¥ĞÉ•…‘i½½´¡Í¡…É”¤ì(€€€½¹ÍĞÍ•œ€ô…İ…¥Ğé½½µM•µ•¹ÑÌ¡•¹Ø°è¹µ••Ñ¥¹UÕ¥¤ì(€€€½¹ÍĞ±¥¹•Ì€ôl(€€€€€€ˆ´´´ƒ–"/
+3›
+//»Šë¢ª4€´´´ˆ°(€€€€€€ˆˆ°(€€€€€ƒšr³’öO»šVÃ ‘íÍ•œ¹½Õ¹Ñôƒšr±€°(€€€€€ƒ–"“–ºk ‘íÍ•œ¹½Õ¹Ğ€øô€È€üƒ–"/
+3›
+/¾ò#O»–Çšr'«Ï
+¿¿¦k_ûo
+O¾ò%€€è€‹–"/
+3›«¾ò#¦koûg¾ò$‰õ€°(€€€€€€ˆˆ°(€€€€€ƒ¦†3–B7 ‘íè¹Ñ½Á¥Œñğ€‹¾ò#«_¾ò$‰õ€°(€€€€€€Çšr³n»»¦VßW ‘í5…Ñ ¹É½Õ¹¡è¹‘ÕÉ…Ñ¥½¹M•Œ€¼€ØÀ¥ôƒ–"¾ò ‘íè¹‘ÕÉ…Ñ¥½¹M•ôƒK¾ò%€°(€€€€€ƒ¦2ËRï»V«–>ß ‘íè¹É•%‘õ€°(€€€€€i½½´ƒ3¢şS_šVÃ ‘íÍ•œ¹™¥±•Íôƒ–/¾ò#–.WRï»ï/¦~Ï–Ãï#ïšZ–¶_¢ÖßO_
+K–B¯
+¾ò%€°(€€€€€€ˆˆ°(€€€€€€ˆÇšr³k“»–/û
+(ˆ°(€€€€€€¸¸¸¡Í•œ¹ÍÑ…ÉÑÌ¹±•¹Ñ €üÍ•œ¹ÍÑ…ÉÑÌ¹µ…À ¡Ì°¤¤€ôø€€€€€‘í¤€¬€Åôƒšr³n» ‘íÍõ€¤€èlˆ€€€ƒ¾ò#šf–"ï3–>[
+3ûo
+OŸ_¾ò$‰t¤°(€€€tì(€€€É•ÑÕÉ¸Ñ•áĞ¡±¥¹•Ì¹©½¥¸ ‰q¸ˆ¤¤ì(€ô…Ñ €¡”¤ì(€€€É•ÑÕÉ¸Ñ•áĞ¡ƒšVÃ#
+'
+3ûo
+OŸ_¾òh‘í”¥¹ÍÑ…¹•½˜ÉÉ½È€ü”¹µ•ÍÍ…”€èMÑÉ¥¹œ¡”¥õ€°€ÔÀÀ¤ì(€ô)ô((¼¨€ôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôô€¨¼()™Õ¹Ñ¥½¸ÍÑÉ•…µ•¡İ½É¬è€¡½ÕĞè€¡ÌèÍÑÉ¥¹œ¤€ôøÙ½¥¤€ôøAÉ½µ¥Í”ñÙ½¥ø¤èI•ÍÁ½¹Í”ì(€½¹ÍĞìÉ•…‘…‰±”°İÉ¥Ñ…‰±”ô€ô¹•ÜQÉ…¹Í™½ÉµMÑÉ•…´ ¤ì(€½¹ÍĞİÉ¥Ñ•È€ôİÉ¥Ñ…‰±”¹•Ñ]É¥Ñ•È ¤ì(€½¹ÍĞ•¹Œ€ô¹•ÜQ•áÑ¹½‘•È ¤ì(€½¹ÍĞ½ÕĞ€ô€¡±¥¹”èÍÑÉ¥¹œ¤€ôøì(€€€Ù½¥İÉ¥Ñ•È¹İÉ¥Ñ”¡•¹Œ¹•¹½‘”¡±¥¹”€¬€‰q¸ˆ¤¤ì(€ôì(€Ù½¥€¡…Íå¹Œ€ ¤€ôøì(€€€ÑÉäì(€€€€€…İ…¥Ğİ½É¬¡½ÕĞ¤ì(€€€ô…Ñ €¡”¤ì(€€€€€½ÕĞ ˆˆ¤ì(€€€€€½ÕĞ ˆôôôƒ¦S’â·Ÿš¶‹û
++û_|€ôôôˆ¤ì(€€€€€½ÕĞ¡MÑÉ¥¹œ¡”¥¹ÍÑ…¹•½˜ÉÉ½È€ü”¹µ•ÍÍ…”€è”¤¤ì(€€€ô™¥¹…±±äì(€€€€€…İ…¥ĞİÉ¥Ñ•È¹±½Í” ¤ì(€€€ô(€ô¤ ¤ì(€É•ÑÕÉ¸¹•ÜI•ÍÁ½¹Í”¡É•…‘…‰±”°ì(€€€¡•…‘•ÉÌèì€‰½¹Ñ•¹ĞµÑåÁ”ˆè€‰Ñ•áĞ½Á±…¥¸ì¡…ÉÍ•ĞõÕÑ˜´àˆ°€‰…¡”µ½¹ÑÉ½°ˆè€‰¹¼µÍÑ½É”ˆô°(€ô¤ì)ô((¼¨€ôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôô€¨¼(¼¨e½ÕQÕ‰”ƒ’â¢šŸ¾ò#šVÃ#
+/ƒGï’öW
+’â+K«ï’öW
+šÚ#W«¾ò$€€€€€€€€€€€€€€¨¼(¼¨€ôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôô€¨¼()ÑåÁ”eÑ%Ñ•´€ôìÑ¥Ñ±”èÍÑÉ¥¹œìÁÕ‰±¥Í¡•‘ĞèÍÑÉ¥¹œìÁÉ¥Ù…äèÍÑÉ¥¹œì¥èÍÑÉ¥¹œôì((¼¨¨(€¨ƒ[§Ï'
+‹
+¯
+›Ï#»Ï7¯¯–—›
+/–.WRï
+K–£’îÛšVÃ#(€¨ƒ–³¦Z/»–"—¾ò#–³¦Z/ï¦fC–ºk–³¦Z/ï¦v{–³¦Z/¾ò'S£»šr³šVÃ£¦fC–ºk–³¦Z/»’â¢šŸ
+K¢şSg(€¨ƒ¢ª·ÿ–>[
++»¢¢Ç–>¿¾ò!å½ÕÑÕ‰”¹É•…‘½¹±ç¾ò'ƒG
+K’öÿ’â+K
+/ïšÚ#g¿’â–"_«(€¨¼)…Íå¹Œ™Õ¹Ñ¥½¸å½ÕÑÕ‰•1¥ÍĞ¡É•ÅÕ•ÍĞèI•ÅÕ•ÍĞ°•¹Øè¹Ø¤èAÉ½µ¥Í”ñI•ÍÁ½¹Í”øì(€½¹ÍĞÕÉ°€ô¹•ÜUI0¡É•ÅÕ•ÍĞ¹ÕÉ°¤ì(€½¹ÍĞİ…¹Ğ€ô€¡ÕÉ°¹Í•…É¡A…É…µÌ¹•Ğ ‰ÁÉ¥Ù…äˆ¤€üü€‰Õ¹±¥ÍÑ•ˆ¤¹Ñ½1½İ•É…Í” ¤ì((€½¹ÍĞåĞ€ô…İ…¥Ğ…•ÍÍQ½­•¸¡•¹Ø°€‰å½ÕÑÕ‰”ˆ¤ì(€¥˜€ …åĞ¹½¬¤É•ÑÕÉ¸Ñ•áĞ¡ƒŸ7ûo
+O¾òh‘íåĞ¹İ¡åõ€°€ĞÀÀ¤ì((€½¹ÍĞ €ô…İ…¥Ğ)Í½¸ñì(€€€¥Ñ•µÌüèì¥üèÍÑÉ¥¹œìÍ¹¥ÁÁ•ĞüèìÑ¥Ñ±”üèÍÑÉ¥¹œôì½¹Ñ•¹Ñ•Ñ…¥±ÌüèìÉ•±…Ñ•‘A±…å±¥ÍÑÌüèìÕÁ±½…‘ÌüèÍÑÉ¥¹œôôõmtì(€ôø¡åĞ¹Ñ½­•¸°€‰¡ÑÑÁÌè¼½İİÜ¹½½±•…Á¥Ì¹½´½å½ÕÑÕ‰”½ØÌ½¡…¹¹•±ÌıÁ…ÉĞõÍ¹¥ÁÁ•Ğ±½¹Ñ•¹Ñ•Ñ…¥±Ì™µ¥¹”õÑÉÕ”ˆ¤ì((€½¹ÍĞ¡…¹¹•°€ô ¹¥Ñ•µÌü¹lÁtì(€½¹ÍĞÕÁ±½…‘Ì€ô¡…¹¹•°ü¹½¹Ñ•¹Ñ•Ñ…¥±Ìü¹É•±…Ñ•‘A±…å±¥ÍÑÌü¹ÕÁ±½…‘Ìì(€¥˜€ …ÕÁ±½…‘Ì¤É•ÑÕÉ¸Ñ•áĞ ‹O»Ï7¯»–—
+3&§3¢š/“/
++ûo
+OŸ_ˆ°€ĞÀÀ¤ì((€½¹ÍĞ¥‘ÌèÍÑÉ¥¹mt€ômtì(€±•ĞÁ…•Q½­•¸€ô€ˆˆì(€™½È€¡±•ĞÕ…É€ô€ÀìÕ…É€ğ€ÄÀÀìÕ…É¬¬¤ì(€€€½¹ÍĞÁ…”€ô…İ…¥Ğ)Í½¸ñì(€€€€€¥Ñ•µÌüèì½¹Ñ•¹Ñ•Ñ…¥±ÌüèìÙ¥‘•½%üèÍÑÉ¥¹œôõmtì(€€€€€¹•áÑA…•Q½­•¸üèÍÑÉ¥¹œì(€€€ôø (€€€€€åĞ¹Ñ½­•¸°(€€€€€¡ÑÑÁÌè¼½İİÜ¹½½±•…Á¥Ì¹½´½å½ÕÑÕ‰”½ØÌ½Á±…å±¥ÍÑ%Ñ•µÌıÁ…ÉĞõ½¹Ñ•¹Ñ•Ñ…¥±Ì™µ…áI•ÍÕ±ÑÌôÔÀ™Á±…å±¥ÍÑ%ô‘í•¹½‘•UI%½µÁ½¹•¹Ğ¡ÕÁ±½…‘Ì¥õ€€¬(€€€€€€€€¡Á…•Q½­•¸€ü€™Á…•Q½­•¸ô‘í•¹½‘•UI%½µÁ½¹•¹Ğ¡Á…•Q½­•¸¥õ€€è€ˆˆ¤°(€€€€¤ì(€€€™½È€¡½¹ÍĞ¥Ğ½˜Á…”¹¥Ñ•µÌ€üümt¤ì(€€€€€½¹ÍĞØ€ô¥Ğ¹½¹Ñ•¹Ñ•Ñ…¥±Ìü¹Ù¥‘•½%ì(€€€€€¥˜€¡Ø¤¥‘Ì¹ÁÕÍ ¡Ø¤ì(€€€ô(€€€¥˜€ …Á…”¹¹•áÑA…•Q½­•¸¤‰É•…¬ì(€€€Á…•Q½­•¸€ôÁ…”¹¹•áÑA…•Q½­•¸ì(€ô((€½¹ÍĞ…±°èeÑ%Ñ•µmt€ômtì(€™½È€¡±•Ğ¤€ô€Àì¤€ğ¥‘Ì¹±•¹Ñ ì¤€¬ô€ÔÀ¤ì(€€€½¹ÍĞ¡Õ¹¬€ô¥‘Ì¹Í±¥”¡¤°¤€¬€ÔÀ¤ì(€€€½¹ÍĞ½Ğ€ô…İ…¥Ğ)Í½¸ñì(€€€€€¥Ñ•µÌüèì¥üèÍÑÉ¥¹œìÍ¹¥ÁÁ•ĞüèìÑ¥Ñ±”üèÍÑÉ¥¹œìÁÕ‰±¥Í¡•‘ĞüèÍÑÉ¥¹œôìÍÑ…ÑÕÌüèìÁÉ¥Ù…åMÑ…ÑÕÌüèÍÑÉ¥¹œôõmtì(€€€ôø¡åĞ¹Ñ½­•¸°¡ÑÑÁÌè¼½İİÜ¹½½±•…Á¥Ì¹½´½å½ÕÑÕ‰”½ØÌ½Ù¥‘•½ÌıÁ…ÉĞõÍ¹¥ÁÁ•Ğ±ÍÑ…ÑÕÌ™¥ô‘í¡Õ¹¬¹©½¥¸ ˆ°ˆ¥õ€¤ì(€€€™½È€¡½¹ÍĞØ½˜½Ğ¹¥Ñ•µÌ€üümt¤ì(€€€€€…±°¹ÁÕÍ ¡ì(€€€€€€€¥èØ¹¥€üü€ˆˆ°(€€€€€€€Ñ¥Ñ±”èØ¹Í¹¥ÁÁ•Ğü¹Ñ¥Ñ±”€üü€‹¾ò#¦†3–B7«_¾ò$ˆ°(€€€€€€€ÁÕ‰±¥Í¡•‘Ğè€¡Ø¹Í¹¥ÁÁ•Ğü¹ÁÕ‰±¥Í¡•‘Ğ€üü€ˆˆ¤¹Í±¥” À°€ÄÀ¤°(€€€€€€€ÁÉ¥Ù…äèØ¹ÍÑ…ÑÕÌü¹ÁÉ¥Ù…åMÑ…ÑÕÌ€üü€‹’â7šb8ˆ°(€€€€€ô¤ì(€€€ô(€ô((€½¹ÍĞ±…‰•°èI•½ÉñÍÑÉ¥¹œ°ÍÑÉ¥¹œø€ôìÁÕ‰±¥Œè€‹–³¦Z,ˆ°Õ¹±¥ÍÑ•è€‹¦fC–ºk–³¦Z,ˆ°ÁÉ¥Ù…Ñ”è€‹¦v{–³¦Z,ˆôì(€½¹ÍĞÑ…±±ä€ô¹•Ü5…ÀñÍÑÉ¥¹œ°¹Õµ‰•Èø ¤ì(€™½È€¡½¹ÍĞØ½˜…±°¤Ñ…±±ä¹Í•Ğ¡Ø¹ÁÉ¥Ù…ä°€¡Ñ…±±ä¹•Ğ¡Ø¹ÁÉ¥Ù…ä¤€üü€À¤€¬€Ä¤ì((€½¹ÍĞ±¥¹•ÌèÍÑÉ¥¹mt€ômtì(€±¥¹•Ì¹ÁÕÍ  ˆ´´´e½ÕQÕ‰”ƒ»šr³šVÀ€´´´ˆ¤ì(€±¥¹•Ì¹ÁÕÍ  ˆˆ¤ì(€±¥¹•Ì¹ÁÕÍ ¡ƒÏ7¯ ‘í¡…¹¹•°ü¹Í¹¥ÁÁ•Ğü¹Ñ¥Ñ±”€üü€‹¾ò#’â7šb;¾ò$‰õ€¤ì(€±¥¹•Ì¹ÁÕÍ ¡ƒ–—
+3&§¯–—›
+/–£’îÛ ‘í…±°¹±•¹Ñ¡ôƒšr±€¤ì(€±¥¹•Ì¹ÁÕÍ  ˆˆ¤ì(€±¥¹•Ì¹ÁÕÍ  ‹–³¦Z/»–"—S£»šr³šVÀˆ¤ì(€™½È€¡½¹ÍĞ­•ä½˜l‰ÁÕ‰±¥Œˆ°€‰Õ¹±¥ÍÑ•ˆ°€‰ÁÉ¥Ù…Ñ”‰t¤ì(€€€±¥¹•Ì¹ÁÕÍ ¡€€€‘í±…‰•±m­•åu÷ ‘íÑ…±±ä¹•Ğ¡­•ä¤€üü€Áôƒšr±€¤ì(€ô(€™½È€¡½¹ÍĞm­•ä°¹t½˜Ñ…±±ä¤ì(€€€¥˜€ …±…‰•±m­•åt¤±¥¹•Ì¹ÁÕÍ ¡€€€‘í­•å÷ ‘í¹ôƒšr±€¤ì(€ô(€±¥¹•Ì¹ÁÕÍ  ˆˆ¤ì(€±¥¹•Ì¹ÁÕÍ ¡€´´´€‘í±…‰•±mİ…¹Ñt€üüİ…¹Ñôƒ»’â¢šœ€´´µ€¤ì(€±¥¹•Ì¹ÁÕÍ  ˆˆ¤ì((€½¹ÍĞÁ¥­•€ô…±°¹™¥±Ñ•È ¡Ø¤€ôøØ¹ÁÉ¥Ù…ä€ôôôİ…¹Ğ¤ì(€¥˜€¡Á¥­•¹±•¹Ñ €ôôô€À¤ì(€€€±¥¹•Ì¹ÁÕÍ  ˆÀƒšr°ˆ¤ì(€ô•±Í”ì(€€€Á¥­•¹Í½ÉĞ ¡„°ˆ¤€ôø€¡„¹ÁÕ‰±¥Í¡•‘Ğ€ğˆ¹ÁÕ‰±¥Í¡•‘Ğ€ü€´Ä€è„¹ÁÕ‰±¥Í¡•‘Ğ€øˆ¹ÁÕ‰±¥Í¡•‘Ğ€ü€Ä€è€À¤¤ì(€€€™½È€¡½¹ÍĞØ½˜Á¥­•¤ì(€€€€€±¥¹•Ì¹ÁÕÍ ¡€‘íØ¹ÁÕ‰±¥Í¡•‘ÑõqĞ‘íØ¹Ñ¥Ñ±•õqÑ¡ÑÑÁÌè¼½İİÜ¹å½ÕÑÕ‰”¹½´½İ…Ñ ıØô‘íØ¹¥‘õ€¤ì(€€€ô(€ô(€±¥¹•Ì¹ÁÕÍ  ˆˆ¤ì(€±¥¹•Ì¹ÁÕÍ  ‹–³¦Z/»–"—
+K–’'#
+/£7¼€ıÁÉ¥Ù…äõÁÕ‰±¥Œ€¼Õ¹±¥ÍÑ•€¼ÁÉ¥Ù…Ñ”ƒ
+K’îcGûgˆ¤ì(€±¥¹•Ì¹ÁÕÍ  ‹O»–>¿šVÃ#
+/ƒGŸg’â+K
+/ïšÚ#gïšnã7š>o#
+/¿¢†3ûo
+Oˆ¤ì((€É•ÑÕÉ¸Ñ•áĞ¡±¥¹•Ì¹©½¥¸ ‰q¸ˆ¤¤ì)ô(((¼¨€ôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôô€¨¼(¼¨ƒ–B3š?Rï¦v‹/
+'š2d€Èƒ“»šZ®€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¨¼(¼¨€ôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôô€¨¼((¼¨¨(€¨½½±”ƒ»–B3š?Rï¦v‹¯¢ò'o
+/’ö?š&£_›¢š
+/ƒG»
+»(€¨ƒ–’[¦£¯¦7
+/
+‹_«Ÿ¿«?9…½­¤ƒšr³’êë_/’öÿ
+?«»Ÿšnã›
+/O£
+–ºš/w»ûû(€¨¼)½¹ÍĞAI%Ye}QaP€ôl(€€‰é½½´µÑ¼µå½ÕÑÕ‰”ƒ_§
+“C
+ßów«
+ßğˆ°(€€‹šrÖšnÓšZÃš^—¾òhÈÀÈØ´Àà´Èàˆ°(€€ˆˆ°(€€ˆÄ¸ƒO»
+‹_«¯“˜ˆ°(€€ˆ€ƒš‚«–ò?’òk’ø	•ÍÑ1¥™•½¹ÍÕ±Ñ¥¹œƒ3¢«’û»¦/R£»
+¯’ös¦O–ßŸgˆ°(€€ˆ€ƒ’â¢"³¯¦7–â_›+
+'k–"§R£¢¿¦/–ZÛ¢šr³’êëƒGŸgˆ°(€€ˆˆ°(€€ˆÈ¸ƒš&Çš–‚Äˆ°(€€ˆ€ƒí½½±”ƒ'§
+“[¾òkO»
+‹_«3’ösW
+§¯£W
+‡
+“¯ƒG¾ò!‘É¥Ù”¹™¥±—¾ò$ˆ°(€€ˆ€ƒí½½±”ƒ
+ç_³'
+ßó#¾òkO»
+‹_«3’ösº‡BR£
+ßó#ƒDˆ°(€€ˆ€ƒíe½ÕQÕ‰—¾òk–.WRï»š*W¢ÿ£Ï7¯»šr³šVÃ»¢ª·ÿ–>[
+(ˆ°(€€ˆ€ƒí½½±”ƒ
+‹
+¯
+›Ï#»‡ó¯
+‹'³
+ç¾ò#§»
+‹
+¯
+›Ï#Ÿ¢¢Ç–>¿_/»¢†£’ë»
+¾ò$ˆ°(€€ˆ€ƒíi½½´ƒ»¦2ËRï¾ò#–.WRïïšZ–¶_¢ÖßO_¾ò$ˆ°(€€ˆˆ°(€€ˆÌ¸ƒ’öÿ¦Lˆ°(€€ˆ€i½½´ƒ»¦2ËRï
+H½½±”ƒ'§
+“[ã’şw–¶c_e½ÕQÕ‰”ƒã¦fC–ºk–³¦Z/Ÿ’â+K
+/O£ˆ°(€€ˆ€ƒw
+3’î—–’[»R£¦S¯¿’öÿûo
+Oˆ°(€€ˆˆ°(€€ˆĞ¸ƒ’şw–¶cg
+/–‚Óš&£šr¦ZLˆ°(€€ˆ€½½±”ƒ»¢¢Ç–>¿»š:Ÿ#£–›B»¦S’â·Ö3¦;
+K±½Õ‘™±…É”HÈƒ¯’şw–¶c_ûgˆ°(€€ˆ€ƒ¢¢Ç–>¿
+K–>[
++šÚ#g£’öÿ#«?«
++ûg’â7¢š¯«šf
+çŸšÚ#_ûgˆ°(€€ˆˆ°(€€ˆÔ¸ƒ–’[¦£ãšâ‡gO ˆ°(€€ˆ€ƒ²³’â'¢ã–Ë
++šâ‡_
++_ûo
+O–ê–F+¯
+’öÿûo
+Oˆ°(€€ˆ€ƒ¦k’ş‡–#¼½½±”ƒ i½½´ƒ ±½Õ‘™±…É”ƒƒGŸgˆ°(€€ˆˆ°(€€ˆØ¸ƒ¢¢Ç–>¿»–>[
++šÚ#\ˆ°(€€ˆ€¡ÑÑÁÌè¼½µå…½Õ¹Ğ¹½½±”¹½´½Á•Éµ¥ÍÍ¥½¹Ìƒ/
+'“Ÿ
+–>[
++šÚ#oûgˆ°(€€ˆˆ°(€€ˆÜ¸ƒ–V?–B#
+?o– ˆ°(€€ˆ€…µ•¥ÍÑ•ÈÅµ…¥°¹½´ˆ°)t¹©½¥¸ ‰q¸ˆ¤ì()½¹ÍĞQI5M}QaP€ôl(€€‰é½½´µÑ¼µå½ÕÑÕ‰”ƒ–"§R£¢š?Òˆ°(€€‹šrÖšnÓšZÃš^—¾òhÈÀÈØ´Àà´Èàˆ°(€€ˆˆ°(€€ˆÄ¸ƒ¦§R ˆ°(€€ˆ€ƒO»¢š?Ò¿š‚«–ò?’òk’ø	•ÍÑ1¥™•½¹ÍÕ±Ñ¥¹œƒ3¦/R£g
+,é½½´µÑ¼µå½ÕÑÕ‰”ƒ¯¦§R£_ûgˆ°(€€ˆˆ°(€€ˆÈ¸ƒ’öÿ#
+/’êèˆ°(€€ˆ€ƒ¦/–ZÛ¢3¢¢Ç–>¿_
+‹
+¯
+›Ï#ƒGŸg’â¢"³¯¿–³¦Z/_›ûo
+Oˆ°(€€ˆˆ°(€€ˆÌ¸ƒŸ7
+/O ˆ°(€€ˆ€i½½´ƒ»¦2ËRï
+H½½±”ƒ'§
+“[ã’şw–¶c_e½ÕQÕ‰”ƒã’â+K
+/O£ƒGŸgˆ°(€€ˆˆ°(€€ˆĞ¸ƒ_›¿G«O ˆ°(€€ˆ€ƒïš¢§–"§
+Kš2«¦2ËRï
+K¦kgO ˆ°(€€ˆ€ƒïšÎW’î“¯–>7g
+/’öÿšZäˆ°(€€ˆ€ƒï’îWÖÿã¦;–’Ÿ«¢Êƒ¢6ß
+K/G
+/O ˆ°(€€ˆˆ°(€€ˆÔ¸ƒš¶‹
+
+/O£ï–’'#
+/O ˆ°(€€ˆ€ƒ’ê#–F+«?––ºç
+K–’'#
++š>C’úo
+Kš¶‹
+
++g
+/O£3
++ûgˆ°(€€ˆˆ°(€€ˆØ¸ƒ¢Ê³’îï»¾–nÈˆ°(€€ˆ€ƒ¢«’û»¦/R£»
+»¦O–ßŸ
++’öÿO£ŸRcšB7–ºÏ¯“›¢Ê³’îï
+K¢Êƒûo
+Oˆ°(€€ˆˆ°(€€ˆÜ¸ƒ–V?–B#
+?o– ˆ°(€€ˆ€…µ•¥ÍÑ•ÈÅµ…¥°¹½´ˆ°)t¹©½¥¸ ‰q¸ˆ¤ì()•áÁ½ÉĞ‘•™…Õ±Ğì(€…Íå¹Œ™•Ñ ¡É•ÅÕ•ÍĞèI•ÅÕ•ÍĞ°•¹Øè¹Ø¤èAÉ½µ¥Í”ñI•ÍÁ½¹Í”øì(€€€½¹ÍĞÕÉ°€ô¹•ÜUI0¡É•ÅÕ•ÍĞ¹ÕÉ°¤ì((€€€Íİ¥Ñ €¡ÕÉ°¹Á…Ñ¡¹…µ”¤ì(€€€€€…Í”€ˆ¼ˆè(€€€€€€€É•ÑÕÉ¸Ñ•áĞ (€€€€€€€€€l(€€€€€€€€€€€€‰é½½´µÑ¼µå½ÕÑÕ‰”ˆ°(€€€€€€€€€€€€ˆˆ°(€€€€€€€€€€€€ˆ€€½Í•ÑÕÀ½Í¡••Ğ€€ƒº‡BR£
+ßó#
+K’ös
+/¾ò#gŸ¯
+3Ã’ös
+'«¾ò$ˆ°(€€€€€€€€€€€€ˆ€€½ÉÕ¸€€€€€€€€€€ƒ
+ßó#»šr«–›B»¢†3
+K¦kdˆ°(€€€€€€€€€€€€ˆ€€½µ…¹…”½ÍÑ…ÑÕÌƒº‡B
+ßó#»*Ûš/
+K¢š/
+/¾ò#’öW
+’ös
+'«ï’öW
+šnã/«¾ò$ˆ°(€€€€€€€€€€€€ˆ€€½½…ÕÑ ½ÍÑ…ÑÕÌ€ƒ¢¢Ç–>¿£
+ßó#»*Ûš/
+K¢š/
+,ˆ°(€€€€€€€€€€€€ˆ€€½½…ÕÑ ½ÍÑ…ÉĞ€€ƒ¢¢Ç–>¿
+K¦kg¾ò Ëšr³¾ò$ˆ°(€€€€€€€€€€€€ˆ€€½é½½´½¡•¬€€€ƒ–Çšr'«Ï
+¿3–"/
+3›«/
+KšVÃ#
+/¾ò#’öW
+’â+K«¾ò$ˆ°(€€€€€€€€€€€€ˆ€€½ÁÉ¥Ù…ä€€€€€€ƒ_§
+“C
+ßów«
+ßğˆ°(€€€€€€€€€€€€ˆ€€½Ñ•ÉµÌ€€€€€€€€ƒ–"§R£¢š?Òˆ°(€€€€€€€€€€€€ˆ€€½å½ÕÑÕ‰”½±¥ÍĞ€ƒÏ7¯»šr³šVÃ
+K–³¦Z/»–"—S£¯šVÃ#
+/¾ò#’öW
+’â+K«¾ò$ˆ°(€€€€€€€€€t¹©½¥¸ ‰q¸ˆ¤°(€€€€€€€€¤ì((€€€€€…Í”€ˆ½ÁÉ¥Ù…äˆè(€€€€€€€É•ÑÕÉ¸Ñ•áĞ¡AI%Ye}QaP¤ì((€€€€€…Í”€ˆ½Ñ•ÉµÌˆè(€€€€€€€É•ÑÕÉ¸Ñ•áĞ¡QI5M}QaP¤ì((€€€€€…Í”€ˆ½é½½´½¡•¬ˆè(€€€€€€€É•ÑÕÉ¸é½½µ¡•¬¡É•ÅÕ•ÍĞ°•¹Ø¤ì((€€€€€…Í”€ˆ½å½ÕÑÕ‰”½±¥ÍĞˆè(€€€€€€€É•ÑÕÉ¸å½ÕÑÕ‰•1¥ÍĞ¡É•ÅÕ•ÍĞ°•¹Ø¤ì((€€€€€…Í”€ˆ½½…ÕÑ ½ÍÑ…ÉĞˆè(€€€€€€€É•ÑÕÉ¸½…ÕÑ¡MÑ…ÉĞ¡É•ÅÕ•ÍĞ°•¹Ø¤ì(€€€€€…Í”€ˆ½½…ÕÑ ½…±±‰…¬ˆè(€€€€€€€É•ÑÕÉ¸½…ÕÑ¡…±±‰…¬¡É•ÅÕ•ÍĞ°•¹Ø¤ì(€€€€€…Í”€ˆ½½…ÕÑ ½ÍÑ…ÑÕÌˆè(€€€€€€€É•ÑÕÉ¸½…ÕÑ¡MÑ…ÑÕÌ¡•¹Ø¤ì((€€€€€…Í”€ˆ½µ…¹…”½ÍÑ…ÑÕÌˆèì(€€€€€€€½¹ÍĞİÌ€ô…İ…¥Ğ…•ÍÍQ½­•¸¡•¹Ø°€‰İ½É­ÍÁ…”ˆ¤ì(€€€€€€€¥˜€ …İÌ¹½¬¤É•ÑÕÉ¸Ñ•áĞ¡ƒŸ7ûo
+O¾òh‘íİÌ¹İ¡åõ€°€ĞÀÀ¤ì(€€€€€€€½¹ÍĞÍ¥€ô…İ…¥ĞÍ¡••Ñ%¡•¹Ø¤ì(€€€€€€€¥˜€ …Í¥¤É•ÑÕÉ¸Ñ•áĞ ‹–>_G’îcG»–>Ã–âÏ3ûƒ
++ûo
+Oˆ°€ĞÀÀ¤ì(€€€€€€€ÑÉäì(€€€€€€€€€É•ÑÕÉ¸Ñ•áĞ¡…İ…¥Ğµ…¹…•MÑ…ÑÕÌ¡•¹Ø°İÌ¹Ñ½­•¸°Í¥¤¤ì(€€€€€€€ô…Ñ €¡”¤ì(€€€€€€€€€É•ÑÕÉ¸Ñ•áĞ¡ƒº‡B
+ßó#»*Ûš/
+K¢ª·
+ûo
+OŸ_¾òh‘í”¥¹ÍÑ…¹•½˜ÉÉ½È€ü”¹µ•ÍÍ…”€èMÑÉ¥¹œ¡”¥õ€°€ÔÀÀ¤ì(€€€€€€€ô(€€€€€ô((€€€€€…Í”€ˆ½µ…¹…”½É•…ÁÁ±äˆèì(€€€€€€€½¹ÍĞİÌ€ô…İ…¥Ğ…•ÍÍQ½­•¸¡•¹Ø°€‰İ½É­ÍÁ…”ˆ¤ì(€€€€€€€¥˜€ …İÌ¹½¬¤É•ÑÕÉ¸Ñ•áĞ¡ƒŸ7ûo
+O¾òh‘íİÌ¹İ¡åõ€°€ĞÀÀ¤ì(€€€€€€€ÑÉäì(€€€€€€€€€½¹ÍĞÉ•ÍÕ±Ğ€ô…İ…¥ĞÉ•…ÁÁ±å½Éµ…ÑÌ¡•¹Ø°İÌ¹Ñ½­•¸¤ì(€€€€€€€€€É•ÑÕÉ¸Ñ•áĞ¡ƒ¢š/–ë_£–—–*o¢š?–&
+K–öO›nÓ_û_	q¹q»
+ÿ[»šVÃ¾òh‘íÉ•ÍÕ±Ğ¹Ñ…‰Íõq¸‘íÉ•ÍÕ±Ğ¹ÕÉ±õ€¤ì(€€€€€€€ô…Ñ €¡”¤ì(€€€€€€€€€É•ÑÕÉ¸Ñ•áĞ¡ƒ–öO›nÓoûo
+OŸ_¾òh‘í”¥¹ÍÑ…¹•½˜ÉÉ½È€ü”¹µ•ÍÍ…”€èMÑÉ¥¹œ¡”¥õ€°€ÔÀÀ¤ì(€€€€€€€ô(€€€€€ô((€€€€€…Í”€ˆ½Í•ÑÕÀ½Í¡••Ğˆèì(€€€€€€€½¹ÍĞİÌ€ô…İ…¥Ğ…•ÍÍQ½­•¸¡•¹Ø°€‰İ½É­ÍÁ…”ˆ¤ì(€€€€€€€¥˜€ …İÌ¹½¬¤É•ÑÕÉ¸Ñ•áĞ¡ƒŸ7ûo
+O¾òh‘íİÌ¹İ¡åõ€°€ĞÀÀ¤ì(€€€€€€€½¹ÍĞÌ€ô…İ…¥Ğµ…­•M¡••Ğ¡•¹Ø°İÌ¹Ñ½­•¸¤ì(€€€€€€€É•ÑÕÉ¸Ñ•áĞ (€€€€€€€€€l(€€€€€€€€€€€Ì¹µ…‘”€ü€‹º‡BR£
+ßó#
+K’ös
++û_ˆ€è€‹º‡BR£
+ßó#¿gŸ¯
++ûgˆ°(€€€€€€€€€€€€ˆˆ°(€€€€€€€€€€€Ì¹ÕÉ°°(€€€€€€€€€€€€ˆˆ°(€€€€€€€€€€€€‹’öÿšZç¾òhË–"_n»¸i½½·–Çšr%UI0ƒ €Ï–"_n»¸ƒ¢²oú§
+ÿ
+“#¬ƒƒG–—
+3›?ƒWˆ°(€€€€€€€€€€€€‹šº/
++¿¢«–.WŸ–—
++ûg×–"S£¯¢š/¯¢†37ûgˆ°(€€€€€€€€€t¹©½¥¸ ‰q¸ˆ¤°(€€€€€€€€¤ì(€€€€€ô((€€€€€…Í”€ˆ½ÉÕ¸ˆè(€€€€€€€É•ÑÕÉ¸ÍÑÉ•…µ• ¡½ÕĞ¤€ôøİ¥Ñ¡1½¬¡•¹Ø°€¡‰•…Ğ¤€ôøÉÕ¹±°¡•¹Ø°½ÕĞ°‰•…Ğ¤°½ÕĞ¤¤ì((€€€€€‘•™…Õ±Ğè(€€€€€€€É•ÑÕÉ¸Ñ•áĞ ‹¢š/“/
++ûo
+Lˆ°€ĞÀĞ¤ì(€€€ô(€ô°((€…Íå¹ŒÍ¡•‘Õ±•¡}•Ù•¹ĞèM¡•‘Õ±•‘½¹ÑÉ½±±•È°•¹Øè¹Ø°Ñàèá•ÕÑ¥½¹½¹Ñ•áĞ¤èAÉ½µ¥Í”ñÙ½¥øì(€€€½¹ÍĞ±½œèÍÑÉ¥¹mt€ômtì(€€€Ñà¹İ…¥ÑU¹Ñ¥° (€€€€€İ¥Ñ¡1½¬¡•¹Ø°€¡‰•…Ğ¤€ôøÉÕ¹±°¡•¹Ø°€¡±¥¹”¤€ôø±½œ¹ÁÕÍ ¡±¥¹”¤°‰•…Ğ¤°€¡±¥¹”¤€ôø±½œ¹ÁÕÍ ¡±¥¹”¤¤¹Ñ¡•¸  ¤€ôø(€€€€€€€½¹Í½±”¹±½œ¡±½œ¹©½¥¸ ‰q¸ˆ¤¤°(€€€€€€¤°(€€€€¤ì(€ô°)ôì(

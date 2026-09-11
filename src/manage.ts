@@ -1,5 +1,5 @@
 const MANAGE_YEAR = "2026";
-const MANAGE_VERSION = "第15版（2026-09-10 開発部・同じ行かどうかの鍵を日付にする）";
+const MANAGE_VERSION = "第16版（2026-09-11 開発部・予定の行へ録画を合わせる・学ぶくんはチェックで選ぶ）";
 const MANAGE_HEADERS = [
   "投稿予定日",
   "ステータス",
@@ -17,6 +17,7 @@ const MANAGE_HEADERS = [
   "録画の状態",
   "処理ID",
   "学ぶくん",
+  "学ぶくんに入れる",
 ] as const;
 const STATUS_VALUES = ["下書き", "レビュー待ち", "日時未定", "予約済み", "公開済"];
 const PLATFORM_VALUES = ["X記事", "Xポスト", "note記事", "セミナー", "有料教材", "YouTube"];
@@ -56,6 +57,7 @@ export interface ManageSyncResult {
   skippedYear: number;
   undecidableDestination: number;
   noSpace: number;
+  merged: number;
 }
 
 export interface ContentOsSyncResult {
@@ -167,7 +169,7 @@ async function setUpTabs(token: string, id: string, properties: SheetProperties[
         },
       },
     );
-    for (const column of [9, 10]) {
+    for (const column of [9, 10, 16]) {
       requests.push({
         setDataValidation: {
           range: { sheetId, startRowIndex: 1, endRowIndex: 500, startColumnIndex: column, endColumnIndex: column + 1 },
@@ -188,7 +190,7 @@ async function setUpTabs(token: string, id: string, properties: SheetProperties[
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       valueInputOption: "RAW",
-      data: tabs().map((tab) => ({ range: `${tab}!A1:P1`, values: [[...MANAGE_HEADERS]] })),
+      data: tabs().map((tab) => ({ range: `${tab}!A1:Q1`, values: [[...MANAGE_HEADERS]] })),
     }),
   });
 }
@@ -246,7 +248,7 @@ async function readSourceRows(token: string, sourceSheetId: string): Promise<str
 }
 
 async function readManageRows(token: string, id: string): Promise<Map<string, SheetRow>> {
-  const ranges = tabs().map((tab) => `ranges=${encodeURIComponent(`${tab}!A2:P500`)}`).join("&");
+  const ranges = tabs().map((tab) => `ranges=${encodeURIComponent(`${tab}!A2:Q500`)}`).join("&");
   const got = await googleJson<{ valueRanges?: { range?: string; values?: string[][] }[] }>(
     token,
     `https://sheets.googleapis.com/v4/spreadsheets/${id}/values:batchGet?majorDimension=ROWS&${ranges}`,
@@ -263,7 +265,7 @@ async function readManageRows(token: string, id: string): Promise<Map<string, Sh
 }
 
 async function readRowsByTab(token: string, id: string): Promise<Map<string, string[][]>> {
-  const ranges = tabs().map((tab) => `ranges=${encodeURIComponent(`${tab}!A2:P500`)}`).join("&");
+  const ranges = tabs().map((tab) => `ranges=${encodeURIComponent(`${tab}!A2:Q500`)}`).join("&");
   const got = await googleJson<{ valueRanges?: { values?: string[][] }[] }>(
     token,
     `https://sheets.googleapis.com/v4/spreadsheets/${id}/values:batchGet?majorDimension=ROWS&${ranges}`,
@@ -466,8 +468,8 @@ function manabuSettings(env: ManageEnv): { url: string; secret: string } | null 
 }
 
 /**
- * 段 4：媒体がセミナーの行を、学ぶくんへ入れる口（/manabu/put-seminar）へ渡す。
- * 門は「媒体がセミナー・タイトルが空でない・処理ID がある・学ぶくんの列（P）が空か失敗」。
+ * 段 4：「学ぶくんに入れる」（Q）にチェックがある行を、学ぶくんへ入れる口（/manabu/put-seminar）へ渡す。
+ * 門は「Q にチェック・タイトルが空でない・処理ID がある・学ぶくんの列（P）が空か失敗」。媒体は見ない（第16版）。
  * YouTube の住所がまだ無い行は待つ（失敗にしない）。
  * 日付は処理ID で受け付けの台帳を引き、収録日を使う。
  * 鍵は動画の住所なので、同じ行を何度通しても学ぶくんの側で 1 本にまとまる。
@@ -493,11 +495,11 @@ export async function syncManabu(env: ManageEnv, token: string, sourceSheetId: s
     for (let index = 0; index < rows.length; index++) {
       const row = rows[index];
       const rowNo = index + 2;
-      const platform = (row[2] ?? "").trim();
+      const wanted = (row[16] ?? "").trim().toUpperCase() === "TRUE";
       const title = (row[4] ?? "").trim();
       const processingId = (row[14] ?? "").trim();
       const manabu = (row[15] ?? "").trim();
-      if (platform !== "セミナー" || !title || !processingId) continue;
+      if (!wanted || !title || !processingId) continue;
       if (manabu && !manabu.startsWith("失敗")) continue;
 
       const youtube = (row[7] ?? "").trim();
@@ -566,6 +568,7 @@ export async function syncManageSheet(
   let skippedYear = 0;
   let undecidableDestination = 0;
   let noSpace = 0;
+  let merged = 0;
 
   for (const source of sourceRows) {
     const processingId = (source[0] ?? "").trim();
@@ -606,12 +609,31 @@ export async function syncManageSheet(
     }
 
     const tabRows = rowsByTab.get(dest.tab) ?? [];
-    let rowNo = 2;
-    const occupiedColumns = [0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15];
-    while (rowNo <= 500 && occupiedColumns.some((column) => (tabRows[rowNo - 2]?.[column] ?? "") !== "")) rowNo += 1;
-    if (rowNo > 500) {
-      noSpace += 1;
-      continue;
+    // 第16版：同じ日付・媒体がセミナー・まだ録画が入っていない「予定の行」が 1 本だけあれば、その行へ入れる。
+    // 2 本以上あるときは取り違えを避けて合わせず、今までどおり新しい行を作る。
+    const recorded = (source[3] ?? "").trim().slice(0, 10);
+    const planRows: number[] = [];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(recorded)) {
+      tabRows.forEach((row, index) => {
+        if (
+          (row?.[0] ?? "").trim().slice(0, 10) === recorded &&
+          (row?.[2] ?? "").trim() === "セミナー" &&
+          (row?.[14] ?? "").trim() === ""
+        ) {
+          planRows.push(index + 2);
+        }
+      });
+    }
+    const toPlan = planRows.length === 1;
+    let rowNo = toPlan ? planRows[0] : 2;
+    if (!toPlan) {
+      // J・K・Q はチェックの印で FALSE と読めるため、空き行の判定に使わない
+      const occupiedColumns = [0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15];
+      while (rowNo <= 500 && occupiedColumns.some((column) => (tabRows[rowNo - 2]?.[column] ?? "") !== "")) rowNo += 1;
+      if (rowNo > 500) {
+        noSpace += 1;
+        continue;
+      }
     }
 
     writes.push(
@@ -627,7 +649,8 @@ export async function syncManageSheet(
     occupied[14] = processingId;
     tabRows[rowNo - 2] = occupied;
     existing.set(processingId, { tab: dest.tab, rowNo, values: occupied });
-    added += 1;
+    if (toPlan) merged += 1;
+    else added += 1;
   }
 
   await writeCells(token, sheet.id, writes);
@@ -640,6 +663,7 @@ export async function syncManageSheet(
     skippedYear,
     undecidableDestination,
     noSpace,
+    merged,
   };
 }
 
