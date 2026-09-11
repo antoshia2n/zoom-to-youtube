@@ -1129,7 +1129,7 @@ async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<vo
     out(
       `管理シート：${managed.made ? "作成" : "既存"}／追加 ${managed.added} 件／更新 ${managed.updated} 件／` +
         `変更なし ${managed.unchanged} 件／別の年 ${managed.skippedYear} 件／` +
-        `入れ先を決められなかった ${managed.undecidableDestination} 件／空きが無くて入れられなかった ${managed.noSpace} 件`,
+        `入れ先を決められなかった ${managed.undecidableDestination} 件／空きが無くて入れられなかった ${managed.noSpace} 件／予定の行へ合わせた ${managed.merged} 件`,
     );
   } catch (e) {
     out(`管理シートへの反映に失敗：${e instanceof Error ? e.message : String(e)}`);
