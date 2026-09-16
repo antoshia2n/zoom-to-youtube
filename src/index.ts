@@ -128,6 +128,8 @@ const PERMITS = {
     scopes: [
       "https://www.googleapis.com/auth/drive.file",
       "https://www.googleapis.com/auth/spreadsheets",
+      // 第17版：処理の結果を本人あてにメールで知らせるため（送るだけ。読む権限は無い）
+      "https://www.googleapis.com/auth/gmail.send",
       "openid",
       "email",
     ].join(" "),
@@ -1083,6 +1085,82 @@ async function processRow(
   }
 }
 
+/* ================================================================== */
+/* 結果を知らせる（第17版）                                            */
+/* ================================================================== */
+
+const NOTIFY_KEY = "notify/last-failures.json";
+
+function utf8Base64(textValue: string): string {
+  const bytes = new TextEncoder().encode(textValue);
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary);
+}
+
+/**
+ * うまくいったことは毎回知らせる（同じ行は 1 度しか起きない）。
+ * 失敗は、前の実行で知らせたものと同じなら知らせない（5 分ごとのやり直しで同じ知らせが続くのを止める）。
+ * 知らせることが 1 つも無ければ何も送らない。送れなくても本体の処理は止めない。
+ */
+async function notifyRun(
+  env: Env,
+  token: string,
+  notes: string[],
+  failures: string[],
+  out: (s: string) => void,
+): Promise<void> {
+  try {
+    const prevObj = await env.STORE.get(NOTIFY_KEY);
+    const prev = new Set<string>(prevObj ? (JSON.parse(await prevObj.text()) as string[]) : []);
+    const freshFailures = failures.filter((line) => !prev.has(line));
+    await env.STORE.put(NOTIFY_KEY, JSON.stringify([...new Set(failures)]));
+    if (notes.length === 0 && freshFailures.length === 0) return;
+
+    const to = (env.ALLOWED_EMAIL ?? "").trim();
+    if (!to) {
+      out("知らせ：宛先（ALLOWED_EMAIL）が無いので送りませんでした");
+      return;
+    }
+    const subject =
+      freshFailures.length > 0
+        ? `【録画の処理】失敗 ${freshFailures.length} 件・完了 ${notes.length} 件`
+        : `【録画の処理】完了 ${notes.length} 件`;
+    const body = [
+      ...freshFailures.map((line) => `失敗｜${line}`),
+      ...notes.map((line) => `完了｜${line}`),
+      "",
+      "管理シート：https://docs.google.com/spreadsheets/d/1YxBIbadN1J2hTfUE5leKs-3__wXaghlLItEK8wWP9tA/edit",
+      "状態を見る：https://zoom-to-youtube.gameister1.workers.dev/manage/status",
+    ].join("\r\n");
+    const raw = [
+      `To: ${to}`,
+      `Subject: =?UTF-8?B?${utf8Base64(subject)}?=`,
+      "MIME-Version: 1.0",
+      "Content-Type: text/plain; charset=UTF-8",
+      "Content-Transfer-Encoding: base64",
+      "",
+      utf8Base64(body),
+    ].join("\r\n");
+    const encoded = utf8Base64(raw).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ raw: encoded }),
+    });
+    if (!res.ok) {
+      const why = (await res.text()).slice(0, 300);
+      // 送れなかった失敗は、次の実行でもう一度送る
+      await env.STORE.put(NOTIFY_KEY, JSON.stringify([...prev]));
+      out(`知らせ：メールを送れませんでした（${res.status}）。許可に gmail.send が無い場合は /oauth/start?for=workspace を通し直す：${why}`);
+      return;
+    }
+    out(`知らせ：メールを送りました（失敗 ${freshFailures.length} 件・完了 ${notes.length} 件）`);
+  } catch (e) {
+    out(`知らせ：送る途中で止まりました：${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
 async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<void>): Promise<void> {
   const started = Date.now();
 
@@ -1115,13 +1193,23 @@ async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<vo
   out(`通す行：${targets.length} 件`);
   out("");
 
+  const notes: string[] = [];
+  const failures: string[] = [];
   for (const t of targets) {
     if (Date.now() - started > RUN_BUDGET_MS) {
       out(`ここで一度畳みます（${sec(Date.now() - started)} 秒）。残りは次の自動実行が続けます。`);
+      await notifyRun(env, ws.token, notes, failures, out);
       return;
     }
     out(`（${t.why}）`);
     await processRow(env, ws.token, sid, t.no, t.row, out, beat);
+    const name = (t.row[COL.title] ?? "").trim() || `${t.no}行目`;
+    const state = (t.row[COL.state] ?? "").trim();
+    if (state === "完了") {
+      notes.push(`YouTube に上がった：${name}（収録日 ${t.row[COL.date] ?? ""}）${t.row[COL.youtube] ?? ""}`);
+    } else if (state === "エラー") {
+      failures.push(`録画を運べなかった：${name}：${(t.row[COL.error] ?? "").slice(0, 300)}`);
+    }
     out("");
   }
   try {
@@ -1129,10 +1217,15 @@ async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<vo
     out(
       `管理シート：${managed.made ? "作成" : "既存"}／追加 ${managed.added} 件／更新 ${managed.updated} 件／` +
         `変更なし ${managed.unchanged} 件／別の年 ${managed.skippedYear} 件／` +
-        `入れ先を決められなかった ${managed.undecidableDestination} 件／空きが無くて入れられなかった ${managed.noSpace} 件／予定の行へ合わせた ${managed.merged} 件`,
+        `入れ先を決められなかった ${managed.undecidableDestination} 件／空きが無くて入れられなかった ${managed.noSpace} 件／予定の行へ合わせた ${managed.merged} 件／` +
+        `日付・媒体・題名を写した ${managed.filled} 件`,
     );
+    notes.push(...managed.notes);
+    if (managed.noSpace > 0) failures.push(`管理シートに空きが無くて入れられなかった：${managed.noSpace} 件`);
   } catch (e) {
-    out(`管理シートへの反映に失敗：${e instanceof Error ? e.message : String(e)}`);
+    const why = `管理シートへの反映に失敗：${e instanceof Error ? e.message : String(e)}`;
+    out(why);
+    failures.push(why.slice(0, 300));
   }
   try {
     const content = await syncContentOs(env, ws.token);
@@ -1144,9 +1237,13 @@ async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<vo
           `変わらなかった ${content.unchanged} 件／枠を作れなかった ${content.createFailed} 件／` +
           `投稿が見つからなかった ${content.postNotFound} 件`,
       );
+      notes.push(...content.notes);
+      failures.push(...content.failures);
     }
   } catch (e) {
-    out(`コンテンツくんへの反映に失敗：${e instanceof Error ? e.message : String(e)}`);
+    const why = `コンテンツくんへの反映に失敗：${e instanceof Error ? e.message : String(e)}`;
+    out(why);
+    failures.push(why.slice(0, 300));
   }
   try {
     const manabu = await syncManabu(env, ws.token, sid);
@@ -1154,10 +1251,15 @@ async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<vo
       out("学ぶくんの設定値が足りないので入れませんでした");
     } else {
       out(`学ぶくん：入れた ${manabu.put} 件／失敗 ${manabu.failed} 件／動画の住所を待っている ${manabu.waitingVideo} 件`);
+      notes.push(...manabu.notes);
+      failures.push(...manabu.failures);
     }
   } catch (e) {
-    out(`学ぶくんへの反映に失敗：${e instanceof Error ? e.message : String(e)}`);
+    const why = `学ぶくんへの反映に失敗：${e instanceof Error ? e.message : String(e)}`;
+    out(why);
+    failures.push(why.slice(0, 300));
   }
+  await notifyRun(env, ws.token, notes, failures, out);
   out("ここまでです。");
 }
 
