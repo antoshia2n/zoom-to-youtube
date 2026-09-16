@@ -1,26 +1,35 @@
 const MANAGE_YEAR = "2026";
-const MANAGE_VERSION = "第16版（2026-09-11 開発部・予定の行へ録画を合わせる・学ぶくんはチェックで選ぶ）";
+const MANAGE_VERSION = "第17版（2026-09-17 開発部・録画の行へ日付・媒体・題名を写す・機械の列に印と警告・結果をメールで知らせる）";
 const MANAGE_HEADERS = [
   "投稿予定日",
-  "ステータス",
+  "ステータス（自動）",
   "媒体",
   "テーマ",
   "タイトル",
   "Whimsical",
-  "zoom",
-  "YouTube",
-  "記事",
+  "zoom録画（自動）",
+  "YouTube（自動）",
+  "記事（自動）",
   "補強依頼",
-  "補強完了",
-  "フォルダ",
+  "補強完了（自動）",
+  "フォルダ（自動）",
   "メモ",
-  "録画の状態",
-  "処理ID",
-  "学ぶくん",
+  "録画の状態（自動）",
+  "処理ID（自動）",
+  "学ぶくん（自動）",
   "学ぶくんに入れる",
 ] as const;
 const STATUS_VALUES = ["下書き", "レビュー待ち", "日時未定", "予約済み", "公開済"];
 const PLATFORM_VALUES = ["X記事", "Xポスト", "note記事", "セミナー", "有料教材", "YouTube"];
+/** 機械が書く列（B・G・H・I・K・L・N・O・P）。0 始まりの列番号 */
+const MACHINE_COLUMNS = [1, 6, 7, 8, 10, 11, 13, 14, 15];
+const PROTECT_NOTE = "機械の列（第17版）";
+/**
+ * 第17版：録画の行へ A 投稿予定日・C 媒体・E タイトル を写す。
+ * この日より前の収録（テストの行）には写さない。写すとコンテンツくんに枠ができてしまうため。
+ */
+const AUTO_FILL_FROM = "2026-09-16";
+const AUTO_FILL_PLATFORM = "セミナー";
 
 export interface ManageEnv {
   STORE: R2Bucket;
@@ -58,6 +67,9 @@ export interface ManageSyncResult {
   undecidableDestination: number;
   noSpace: number;
   merged: number;
+  filled: number;
+  /** 知らせる行（1 行 1 件） */
+  notes: string[];
 }
 
 export interface ContentOsSyncResult {
@@ -67,6 +79,8 @@ export interface ContentOsSyncResult {
   unchanged: number;
   createFailed: number;
   postNotFound: number;
+  notes: string[];
+  failures: string[];
 }
 
 export interface ManabuSyncResult {
@@ -74,6 +88,8 @@ export interface ManabuSyncResult {
   put: number;
   failed: number;
   waitingVideo: number;
+  notes: string[];
+  failures: string[];
 }
 
 interface ContentPost {
@@ -118,6 +134,26 @@ async function sheetMetadata(token: string, id: string): Promise<SheetProperties
     `https://sheets.googleapis.com/v4/spreadsheets/${id}?fields=sheets.properties(sheetId,title)`,
   );
   return (got.sheets ?? []).map((sheet) => sheet.properties ?? {});
+}
+
+async function protectedSheetIds(token: string, id: string): Promise<Set<number>> {
+  const got = await googleJson<{
+    sheets?: { properties?: SheetProperties; protectedRanges?: { description?: string; range?: { sheetId?: number } }[] }[];
+  }>(token, `https://sheets.googleapis.com/v4/spreadsheets/${id}?fields=sheets(properties.sheetId,protectedRanges(description,range.sheetId))`);
+  const result = new Set<number>();
+  for (const sheet of got.sheets ?? []) {
+    const sheetId = sheet.properties?.sheetId;
+    if (sheetId === undefined) continue;
+    if ((sheet.protectedRanges ?? []).some((range) => range.description === PROTECT_NOTE)) result.add(sheetId);
+  }
+  return result;
+}
+
+/** 台帳の講義タイトルから、先頭の「日付｜」を落とす（学ぶくんの棚の題名に日付を入れていないため） */
+export function cleanTitle(raw: string): string {
+  const title = raw.trim();
+  const stripped = title.replace(/^[^｜|]*?\d{1,2}\s*月\s*\d{1,2}\s*日[^｜|]*[｜|]\s*/, "").trim();
+  return stripped || title;
 }
 
 async function setUpTabs(token: string, id: string, properties: SheetProperties[]): Promise<void> {
@@ -174,6 +210,25 @@ async function setUpTabs(token: string, id: string, properties: SheetProperties[
         setDataValidation: {
           range: { sheetId, startRowIndex: 1, endRowIndex: 500, startColumnIndex: column, endColumnIndex: column + 1 },
           rule: { condition: { type: "BOOLEAN" }, strict: true, showCustomUi: true },
+        },
+      });
+    }
+  }
+
+  // 機械の列に警告つきの保護を掛ける（手で書こうとすると確認の窓が出る。機械の書き込みは止まらない）。
+  // 当て直しのたびに重ならないよう、同じ印の保護があるタブには足さない。
+  const guarded = await protectedSheetIds(token, id);
+  for (const tab of tabs()) {
+    const sheetId = byTitle.get(tab);
+    if (sheetId === undefined || guarded.has(sheetId)) continue;
+    for (const column of MACHINE_COLUMNS) {
+      requests.push({
+        addProtectedRange: {
+          protectedRange: {
+            range: { sheetId, startRowIndex: 1, endRowIndex: 500, startColumnIndex: column, endColumnIndex: column + 1 },
+            description: PROTECT_NOTE,
+            warningOnly: true,
+          },
         },
       });
     }
@@ -374,6 +429,8 @@ export async function syncContentOs(env: ManageEnv, token: string): Promise<Cont
     unchanged: 0,
     createFailed: 0,
     postNotFound: 0,
+    notes: [],
+    failures: [],
   };
   if (!settings) return result;
 
@@ -421,8 +478,12 @@ export async function syncContentOs(env: ManageEnv, token: string): Promise<Cont
           result.statusUpdated += 1;
         }
         result.created += 1;
-      } catch {
+        result.notes.push(`コンテンツくんに枠を作った：${title}（${tab} の ${rowNo} 行目）`);
+      } catch (e) {
         result.createFailed += 1;
+        result.failures.push(
+          `コンテンツくんに枠を作れなかった：${title}（${tab} の ${rowNo} 行目）：${e instanceof Error ? e.message : String(e)}`.slice(0, 300),
+        );
       }
     }
   }
@@ -477,7 +538,14 @@ function manabuSettings(env: ManageEnv): { url: string; secret: string } | null 
  */
 export async function syncManabu(env: ManageEnv, token: string, sourceSheetId: string): Promise<ManabuSyncResult> {
   const settings = manabuSettings(env);
-  const result: ManabuSyncResult = { missingSettings: settings === null, put: 0, failed: 0, waitingVideo: 0 };
+  const result: ManabuSyncResult = {
+    missingSettings: settings === null,
+    put: 0,
+    failed: 0,
+    waitingVideo: 0,
+    notes: [],
+    failures: [],
+  };
   if (!settings) return result;
 
   const config = await loadConfig(env);
@@ -534,9 +602,11 @@ export async function syncManabu(env: ManageEnv, token: string, sourceSheetId: s
         const how = (got.result.書き換えた本数 ?? 0) > 0 ? "書き換えた" : "足した";
         note = `済 ${jstStamp(Date.now())} ${got.result.コース?.title ?? ""} ${how}`.trim();
         result.put += 1;
+        result.notes.push(`学ぶくんに入れた：${title}（${got.result.コース?.title ?? ""}・${how}）`);
       } catch (e) {
         note = `失敗：${e instanceof Error ? e.message : String(e)}`.slice(0, 500);
         result.failed += 1;
+        result.failures.push(`学ぶくんに入れられなかった：${title}：${note.slice(3, 300)}`);
       }
       writes.push({ range: `${tab}!P${rowNo}`, values: [[note]] });
     }
@@ -569,6 +639,9 @@ export async function syncManageSheet(
   let undecidableDestination = 0;
   let noSpace = 0;
   let merged = 0;
+  let filled = 0;
+  const notes: string[] = [];
+  const filledIds: string[] = [];
 
   for (const source of sourceRows) {
     const processingId = (source[0] ?? "").trim();
@@ -590,7 +663,30 @@ export async function syncManageSheet(
       state: recordingState(source),
     };
     const found = existing.get(processingId);
+    const recordedDay = (source[3] ?? "").trim().slice(0, 10);
+    const fillWanted =
+      /^\d{4}-\d{2}-\d{2}$/.test(recordedDay) &&
+      recordedDay >= AUTO_FILL_FROM &&
+      !(await env.STORE.head(`manage/filled/${processingId}`));
+    const fill = (tab: string, rowNo: number, values: string[]) => {
+      if (!fillWanted) return;
+      const title = cleanTitle(source[2] ?? "");
+      const cells = [
+        { column: "A", index: 0, value: recordedDay },
+        { column: "C", index: 2, value: AUTO_FILL_PLATFORM },
+        { column: "E", index: 4, value: title },
+      ];
+      for (const cell of cells) {
+        // 人が書いた値は上書きしない。写すのは空のときだけ、しかも処理IDごとに 1 回だけ。
+        if ((values[cell.index] ?? "").trim() !== "" || cell.value === "") continue;
+        writes.push({ range: `${tab}!${cell.column}${rowNo}`, values: [[cell.value]] });
+        values[cell.index] = cell.value;
+      }
+      filledIds.push(processingId);
+      filled += 1;
+    };
     if (found) {
+      fill(found.tab, found.rowNo, found.values);
       const changes = [
         { column: "G", index: 6, value: wanted.zoom },
         { column: "H", index: 7, value: wanted.youtube },
@@ -600,6 +696,9 @@ export async function syncManageSheet(
       if (changes.length === 0) {
         unchanged += 1;
         continue;
+      }
+      if (wanted.youtube && (found.values[7] ?? "") !== wanted.youtube) {
+        notes.push(`管理シートに入った：${cleanTitle(source[2] ?? "") || processingId}（${found.tab} の ${found.rowNo} 行目）`);
       }
       for (const change of changes) {
         writes.push({ range: `${found.tab}!${change.column}${found.rowNo}`, values: [[change.value]] });
@@ -649,11 +748,19 @@ export async function syncManageSheet(
     occupied[14] = processingId;
     tabRows[rowNo - 2] = occupied;
     existing.set(processingId, { tab: dest.tab, rowNo, values: occupied });
+    fill(dest.tab, rowNo, occupied);
+    if (wanted.youtube) {
+      notes.push(`管理シートに入った：${cleanTitle(source[2] ?? "") || processingId}（${dest.tab} の ${rowNo} 行目）`);
+    }
     if (toPlan) merged += 1;
     else added += 1;
   }
 
   await writeCells(token, sheet.id, writes);
+  // 書けたあとで印を置く（書き込みが落ちたら次の実行でもう一度写す）
+  for (const processingId of filledIds) {
+    await env.STORE.put(`manage/filled/${processingId}`, new Date().toISOString());
+  }
   return {
     url: sheet.url,
     made: sheet.made,
@@ -664,6 +771,8 @@ export async function syncManageSheet(
     undecidableDestination,
     noSpace,
     merged,
+    filled,
+    notes,
   };
 }
 
