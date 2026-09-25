@@ -13,7 +13,7 @@
  * ファイルは消さない。確かめ終わったら、この口ごと外す。
  */
 
-const PROBE_KEY = "probe/tensaku-2026-09-25.json";
+const PROBE_KEY = "probe/tensaku-2026-09-25-v2.json";
 const DOCS = "https://docs.googleapis.com/v1/documents";
 const DRIVE = "https://www.googleapis.com/drive/v3/files";
 
@@ -63,7 +63,7 @@ export async function probeTensaku(
     status: made.status,
     detail: docId ? `https://docs.google.com/document/d/${docId}/edit` : made.raw,
   });
-  if (!docId) return finish(store, steps);
+  if (!docId) return finish(store, steps, false);
 
   // ② タブを足す
   const tab = await call(token, `${DOCS}/${docId}:batchUpdate`, {
@@ -143,7 +143,7 @@ export async function probeTensaku(
   return finish(store, steps);
 }
 
-async function finish(store: R2Bucket, steps: Step[]): Promise<string> {
+async function finish(store: R2Bucket, steps: Step[], keep = true): Promise<string> {
   const lines = [
     "--- 添削の試し（drive.file の範囲だけで届くか）---",
     "",
@@ -152,6 +152,7 @@ async function finish(store: R2Bucket, steps: Step[]): Promise<string> {
     "コメントが文の範囲に付いて見えるかは、上の 1 冊を開いて目で確かめる（Google の口の返事だけでは分からない）。",
   ];
   const out = lines.join("\n");
-  await store.put(PROBE_KEY, out);
+  // 1 冊目を作れなかったときは控えない（何度でも試し直せるように）
+  if (keep) await store.put(PROBE_KEY, out);
   return out;
 }
