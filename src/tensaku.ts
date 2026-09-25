@@ -75,12 +75,16 @@ export function checkBody(b: any): string | null {
   if (typeof b.original !== "string" || !b.original) return "original が無い";
   if (!Array.isArray(b.notes)) return "notes が配列ではない";
   for (const x of b.notes) {
-    if (typeof x?.n !== "number" || typeof x?.start !== "number" || typeof x?.end !== "number" || typeof x?.text !== "string")
-      return "notes の 1 件の形が違う（n・start・end・text）";
+    if (typeof x?.n !== "number" || typeof x?.text !== "string") return "notes の 1 件の形が違う（n・text）";
+    // 2026-09-25 直し：短文の指摘は範囲を持たない（start・end が空で来る）。範囲を見るのは長文だけ
+    if (b.kind !== "long") continue;
+    if (typeof x.start !== "number" || typeof x.end !== "number") return `長文の notes の ${x.n} 番に範囲（start・end）が無い`;
     if (x.start < 0 || x.end > b.original.length || x.start >= x.end) return `notes の ${x.n} 番の範囲が original の外`;
   }
-  const sorted = [...b.notes].sort((p: Note, q: Note) => p.start - q.start);
-  for (let i = 1; i < sorted.length; i++) if (sorted[i].start < sorted[i - 1].end) return "指摘の範囲が重なっている";
+  if (b.kind === "long") {
+    const sorted = [...b.notes].sort((p: Note, q: Note) => p.start - q.start);
+    for (let i = 1; i < sorted.length; i++) if (sorted[i].start < sorted[i - 1].end) return "指摘の範囲が重なっている";
+  }
   if (b.kind === "short" && typeof b.revised !== "string") return "短文には revised が要る";
   return null;
 }
