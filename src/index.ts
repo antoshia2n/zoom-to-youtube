@@ -47,7 +47,7 @@
  *   Naoki が行を分けて貼り直す。
  */
 
-import { handleTensakuCommit } from "./tensaku";
+import { handleTensakuCommit, handleTensakuNotify } from "./tensaku";
 import { manageStatus, reapplyFormats, syncContentOs, syncManabu, syncManageSheet } from "./manage";
 
 interface Env {
@@ -1805,6 +1805,9 @@ export default {
       // 試しの口 /probe/tensaku はここで外した（ファイル probe-tensaku.ts はどこからも呼ばれない）
       case "/tensaku/commit":
         return handleTensakuCommit(request, env, () => accessToken(env, "workspace"));
+      // 2026-09-25 添削の知らせ（提出で Naoki へ・添削完了で生徒へメール）
+      case "/tensaku/notify":
+        return handleTensakuNotify(request, env, () => accessToken(env, "workspace"));
 
       case "/run":
         return streamed((out) => withLock(env, (beat) => runAll(env, out, beat), out));
