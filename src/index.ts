@@ -47,6 +47,7 @@
  *   Naoki が行を分けて貼り直す。
  */
 
+import { probeTensaku } from "./probe-tensaku";
 import { manageStatus, reapplyFormats, syncContentOs, syncManabu, syncManageSheet } from "./manage";
 
 interface Env {
@@ -1797,6 +1798,10 @@ export default {
           ].join("\n"),
         );
       }
+
+      // 2026-09-25 添削の試し（一時的・確かめ終わったら外す）
+      case "/probe/tensaku":
+        return text(await probeTensaku(env.STORE, () => accessToken(env, "workspace")));
 
       case "/run":
         return streamed((out) => withLock(env, (beat) => runAll(env, out, beat), out));
