@@ -47,7 +47,7 @@
  *   Naoki が行を分けて貼り直す。
  */
 
-import { probeTensaku } from "./probe-tensaku";
+import { handleTensakuCommit } from "./tensaku";
 import { manageStatus, reapplyFormats, syncContentOs, syncManabu, syncManageSheet } from "./manage";
 
 interface Env {
@@ -65,6 +65,8 @@ interface Env {
   CONTENT_OS_ACCOUNT_ID?: string;
   MANABU_PUT_SEMINAR_URL?: string;
   MANABU_PUT_SEMINAR_SECRET?: string;
+  /** 添削の確定の口の鍵。学ぶくんの側にも同じ値を入れる（2026-09-25） */
+  TENSAKU_KEY?: string;
 }
 
 const UA =
@@ -1799,9 +1801,10 @@ export default {
         );
       }
 
-      // 2026-09-25 添削の試し（一時的・確かめ終わったら外す）
-      case "/probe/tensaku":
-        return text(await probeTensaku(env.STORE, () => accessToken(env, "workspace")));
+      // 2026-09-25 添削の確定を Google へ写す口（学ぶくんのサーバーから鍵つきで呼ぶ）。
+      // 試しの口 /probe/tensaku はここで外した（ファイル probe-tensaku.ts はどこからも呼ばれない）
+      case "/tensaku/commit":
+        return handleTensakuCommit(request, env, () => accessToken(env, "workspace"));
 
       case "/run":
         return streamed((out) => withLock(env, (beat) => runAll(env, out, beat), out));
