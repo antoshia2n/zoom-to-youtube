@@ -225,3 +225,112 @@ export async function handleTensakuCommit(
     return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 502);
   }
 }
+
+// ─────────────────────────────────────────────────────────────
+// 添削の知らせ（2026-09-25 Naoki 確定：提出で Naoki へ、添削完了で生徒へメール）
+//   POST /tensaku/notify　見出し x-tensaku-key
+//   本文：event（"submitted" か "returned"）・submission_id・student_name・title・kind
+//         submitted のとき：request_text（依頼文）・link_url（Docs かシートのリンク・無くてもよい）
+//         returned のとき：student_email（生徒のメール）
+//         どちらも：app_url（学ぶくんの開く先）
+//   宛先：submitted は設定の値 ALLOWED_EMAIL（Naoki）だけ。returned は生徒 1 人だけ
+//   同じ提出・同じ出来事の 2 回目は送らない（押し直しで二重に届かないため）
+// ─────────────────────────────────────────────────────────────
+
+function b64(s: string): string {
+  const bytes = new TextEncoder().encode(s);
+  let bin = "";
+  for (const x of bytes) bin += String.fromCharCode(x);
+  return btoa(bin);
+}
+
+const MAIL_PREFIX = "tensaku/mail/";
+
+export function mailFor(b: any, naoki: string): { to: string; subject: string; body: string } | string {
+  if (!b || typeof b !== "object") return "本文が JSON ではない";
+  if (typeof b.submission_id !== "string" || !b.submission_id) return "submission_id が無い";
+  const title = String(b.title ?? "").slice(0, 100);
+  const name = String(b.student_name ?? "").slice(0, 50);
+  const app = typeof b.app_url === "string" && b.app_url.startsWith("https://manabu.shia2n.jp/") ? b.app_url : "https://manabu.shia2n.jp/";
+  if (b.event === "submitted") {
+    if (!naoki) return "設定の値 ALLOWED_EMAIL が入っていない";
+    const link = typeof b.link_url === "string" ? b.link_url : "";
+    return {
+      to: naoki,
+      subject: `【添削の依頼】${name}「${title}」`,
+      body: [
+        `${name} さんから添削の依頼が届きました。`,
+        "",
+        `題：${title}`,
+        link ? `リンク：${link}` : "リンク：なし（学ぶくんに本文を貼っての提出）",
+        "",
+        "依頼文：",
+        String(b.request_text ?? "").slice(0, 4000),
+        "",
+        `学ぶくんで開く：${app}`,
+      ].join("\r\n"),
+    };
+  }
+  if (b.event === "returned") {
+    const to = String(b.student_email ?? "").trim();
+    if (!/^[^\s@<>,]+@[^\s@<>,]+\.[^\s@<>,]+$/.test(to)) return "student_email の形が違う";
+    return {
+      to,
+      subject: `【添削が返りました】${title}`,
+      body: [
+        `${name} さん`,
+        "",
+        `「${title}」の添削が終わりました。`,
+        "下から開いて、確認したら「読んだ」を押してください。",
+        "",
+        app,
+        "",
+        "シアニン",
+      ].join("\r\n"),
+    };
+  }
+  return "event は submitted か returned";
+}
+
+export async function handleTensakuNotify(
+  request: Request,
+  env: { STORE: R2Bucket; TENSAKU_KEY?: string; ALLOWED_EMAIL?: string },
+  getToken: TokenFn,
+): Promise<Response> {
+  if (request.method !== "POST") return json({ ok: false, error: "POST だけ" }, 405);
+  const key = (env.TENSAKU_KEY ?? "").trim();
+  if (!key) return json({ ok: false, error: "設定の値 TENSAKU_KEY が入っていない" }, 503);
+  if (!sameKey(request.headers.get("x-tensaku-key") ?? "", key)) return json({ ok: false, error: "鍵が違う" }, 401);
+  let b: any;
+  try {
+    b = await request.json();
+  } catch {
+    return json({ ok: false, error: "本文が JSON ではない" }, 400);
+  }
+  const m = mailFor(b, (env.ALLOWED_EMAIL ?? "").trim());
+  if (typeof m === "string") return json({ ok: false, error: m }, 400);
+
+  const sentKey = MAIL_PREFIX + b.event + "/" + encodeURIComponent(b.submission_id);
+  if (await env.STORE.get(sentKey)) return json({ ok: true, again: true });
+
+  const t = await getToken();
+  if (!t.ok) return json({ ok: false, error: `Google の資格：${t.why}` }, 502);
+  const raw = [
+    `To: ${m.to}`,
+    `Subject: =?UTF-8?B?${b64(m.subject)}?=`,
+    "MIME-Version: 1.0",
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    b64(m.body),
+  ].join("\r\n");
+  const encoded = b64(raw).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: { authorization: `Bearer ${t.token}`, "content-type": "application/json" },
+    body: JSON.stringify({ raw: encoded }),
+  });
+  if (!res.ok) return json({ ok: false, error: `Gmail ${res.status}：${(await res.text()).slice(0, 300)}` }, 502);
+  await env.STORE.put(sentKey, JSON.stringify({ to_kind: b.event, at: new Date().toISOString() }));
+  return json({ ok: true, again: false });
+}
