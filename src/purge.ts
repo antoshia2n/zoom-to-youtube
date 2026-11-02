@@ -14,8 +14,12 @@
 import { zoomToken, type ArchiveEnv } from "./archive";
 import { legacyRows, recKey, type LegacyRec } from "./legacy";
 
-/** 11/02 より前で YouTube と結び付かない録画を、R2 だけで Zoom から消してよいか（Naoki の判断待ち・既定は消さない） */
-export const LEGACY_R2_ONLY_OK = false;
+/**
+ * 11/02 より前で YouTube と結び付かない録画を、R2 だけで Zoom から消してよいか。
+ * 2026-11-02 14:39 Naoki「古い動画はだいたい不要で、新しく取り直すものも多い。過去に一度YouTubeに写してあるから大丈夫」→ true。
+ * R2 に全部入り終えて大きさを確かめたものだけが対象で、Zoom ではゴミ箱へ移す（30 日は戻せる）
+ */
+export const LEGACY_R2_ONLY_OK = true;
 /** 1 回の実行で Zoom のゴミ箱へ移す上限 */
 const PER_RUN = 30;
 
