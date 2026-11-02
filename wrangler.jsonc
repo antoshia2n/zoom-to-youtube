@@ -6,6 +6,10 @@
   // 2026-09-10 追加：同じ workers.dev の下にある shia2n-mcp の口（/manabu/put-seminar）を
   // 呼んだときに Cloudflare の 1042 で拒まれたため。受け側の shia2n-mcp には既に同じ旗がある。
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  // 第18版（2026-11-02）：録画の名前付けに Workers AI を使う
+  "ai": {
+    "binding": "AI"
+  },
   "r2_buckets": [
     {
       "binding": "STORE",
