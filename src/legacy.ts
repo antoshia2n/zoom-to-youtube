@@ -55,6 +55,8 @@ export interface LegacyFile {
   r2UploadId?: string;
   r2Parts?: { partNumber: number; etag: string }[];
   r2Done?: boolean;
+  /** 第21版：途中から読む頼みでメモリの上限に当たったファイルは、次から流しながら入れる */
+  forceStream?: boolean;
 }
 
 export interface LegacyRec {
@@ -70,6 +72,8 @@ export interface LegacyRec {
   r2Done?: boolean;
   /** 便 3 で入る */
   zoomDeletedAt?: string;
+  /** 第21版：探す・消す道具で R2 から消した（要らないと決めた）日時。R2 へは入れ直さない */
+  r2DeletedAt?: string;
   lastError?: string;
   updatedAt: string;
 }
@@ -511,7 +515,7 @@ export async function migrateLegacy(
     const stop = () => Date.now() > deadline || res.movedBytes >= BYTES_PER_RUN;
 
     for (const rec of recs) {
-      if (rec.r2Done) continue;
+      if (rec.r2Done || rec.r2DeletedAt) continue;
       if (stop()) break;
       try {
         out(`【古い録画】${rec.date}（${(rec.totalSize / 1073741824).toFixed(2)} GB・ファイル ${rec.files.length} 個）`);
@@ -565,8 +569,9 @@ export async function migrateLegacy(
             await saveRec(env, rec);
           }
           // 途中から読めるかを、入れ始める前に 1 回だけ聞く（途中まで入っているものは読めると分かっている）
-          if (!f.r2UploadId) {
-            const pr = await probeZoom(zoom, f.url);
+          // 第21版：前に分割で入れ始めて 1 個も入っていないもの・メモリの上限に当たったものも聞き直す
+          if (f.forceStream || !f.r2UploadId || !(f.r2Parts?.length)) {
+            const pr = f.forceStream ? { size: f.size, ranged: false } : await probeZoom(zoom, f.url);
             if (!pr.ranged) {
               out(`      このファイルは途中から読めないので、流しながら入れます（${(f.size / 1048576).toFixed(0)} MB）`);
               const okStream = await streamZoomToR2(env, zoom, f, deadline, out, beat);
@@ -592,6 +597,12 @@ export async function migrateLegacy(
             beat,
             stop,
           ).catch(async (e) => {
+            // 第21版：途中から読む頼みでメモリの上限に当たったら、次の実行は流しながら入れる
+            if (/Memory limit/i.test(e instanceof Error ? e.message : String(e))) {
+              f.forceStream = true;
+              f.r2UploadId = undefined;
+              f.r2Parts = undefined;
+            }
             await saveRec(env, rec);
             throw e;
           });
@@ -613,6 +624,7 @@ export async function migrateLegacy(
       }
     }
     for (const r of recs) {
+      if (r.r2DeletedAt) continue;
       if (r.r2Done) res.done++;
       else res.remainingBytes += r.files.filter((f) => !f.r2Done).reduce((a, f) => a + f.size, 0);
       if (r.match) res.matched[r.match.kind]++;

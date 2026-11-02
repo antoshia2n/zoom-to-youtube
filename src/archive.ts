@@ -13,7 +13,6 @@
  *   ・Zoom の会議名は AI に渡さない（会員の名前が入っていることがあるため）
  *   ・Zoom から消すのは便 3。この版では消さない
  */
-import { WorkerEntrypoint } from "cloudflare:workers";
 
 /* ------------------------------------------------------------------ */
 /* 型                                                                  */
@@ -574,13 +573,17 @@ export interface ArchiveRow {
   kind: "new" | "legacy";
   /** 第19版：会議 1 回ぶんの大きさ（GB） */
   size_gb: number | null;
+  /** 第21版：会の名前（セミナー・Zoom添削・個別相談・打ち合わせ・その他） */
+  kai: string | null;
+  /** 第21版：探す・消す道具で R2 から消した日時 */
+  r2_deleted_at: string | null;
 }
 
 export interface ArchiveListResult {
   ok: true;
   count: number;
   counts: { r2: number; youtube: number; both: number; zoom_deleted: number };
-  rows: ArchiveRow[];
+  rows?: ArchiveRow[];
   /** 第19版：古い録画の移しの進み具合 */
   legacy: { total: number; r2_done: number; remaining_gb: number; youtube_none: number };
   failure_count: number;
@@ -591,9 +594,11 @@ type JobLike = R2Progress & {
   recId: string;
   title?: string;
   date?: string;
+  size?: number;
   youtubeUrl?: string;
   naming?: Naming;
   zoomDeletedAt?: string;
+  r2DeletedAt?: string;
   lastError?: string;
   updatedAt?: string;
 };
@@ -622,8 +627,8 @@ export async function buildArchiveList(
         rec_id: j.recId,
         date: j.date ?? "",
         title: j.naming?.title ?? j.title ?? "",
-        r2: !!j.r2Done,
-        r2_key: j.r2Done ? (j.r2Key ?? null) : null,
+        r2: !!j.r2Done && !j.r2DeletedAt,
+        r2_key: j.r2Done && !j.r2DeletedAt ? (j.r2Key ?? null) : null,
         youtube: !!j.youtubeUrl,
         youtube_url: j.youtubeUrl ?? null,
         zoom_deleted: !!j.zoomDeletedAt,
@@ -632,7 +637,9 @@ export async function buildArchiveList(
         naming_note: j.naming?.note ?? null,
         updated_at: j.updatedAt ?? "",
         kind: "new",
-        size_gb: null,
+        size_gb: j.size ? Math.round((j.size / 1073741824) * 100) / 100 : null,
+        kai: j.naming?.kai ?? null,
+        r2_deleted_at: j.r2DeletedAt ?? null,
       });
       if (j.lastError) failures.push({ where: "録画", what: `${j.date ?? ""} ${j.title ?? j.recId}`, error: j.lastError });
     }
@@ -695,12 +702,7 @@ export function setSheetFailureReader(f: typeof sheetFailureReader): void {
   sheetFailureReader = f;
 }
 
-/**
- * shia2n-mcp から結び（services）で呼ぶ口。公開の住所には出ていないので、合言葉は要らない。
- * 読むだけ。何も書かない。
- */
-export class ArchiveApi extends WorkerEntrypoint<ArchiveEnv> {
-  async list(): Promise<ArchiveListResult> {
-    return buildArchiveList(this.env, async () => (sheetFailureReader ? sheetFailureReader(this.env) : []));
-  }
+/** 第21版：台帳の失敗の読み方を外（api.ts）から使う */
+export async function readSheetFailures(env: ArchiveEnv): Promise<{ where: string; what: string; error: string }[]> {
+  return sheetFailureReader ? sheetFailureReader(env) : [];
 }

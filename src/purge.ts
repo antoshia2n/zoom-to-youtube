@@ -43,6 +43,7 @@ interface JobLike {
   size?: number;
   youtubeUrl?: string;
   zoomDeletedAt?: string;
+  r2DeletedAt?: string;
   lastError?: string;
   date?: string;
   updatedAt?: string;
@@ -54,6 +55,8 @@ interface Candidate {
   youtube: string | null;
   r2: { key: string; size: number }[];
   r2Only: boolean;
+  /** 第21版：探す・消す道具で「要らない」と決めて R2 から消した録画。確かめずに Zoom のゴミ箱へ移す */
+  discarded?: boolean;
   mark: (at: string | null, err: string | null) => Promise<void>;
 }
 
@@ -100,7 +103,8 @@ export async function purgeZoom(
         if (!got) continue;
         const j = JSON.parse(await got.text()) as JobLike;
         if (!j.meetingUuid || j.zoomDeletedAt) continue;
-        if (!j.r2Done || !j.youtubeUrl || !j.r2Key || !j.size) {
+        const discarded = !!j.r2DeletedAt;
+        if (!discarded && (!j.r2Done || !j.youtubeUrl || !j.r2Key || !j.size)) {
           res.waiting++;
           continue;
         }
@@ -108,8 +112,9 @@ export async function purgeZoom(
           label: `${j.date ?? ""}（新しい録画）`,
           uuid: j.meetingUuid,
           youtube: videoId(j.youtubeUrl),
-          r2: [{ key: j.r2Key, size: j.size }],
+          r2: j.r2Key ? [{ key: j.r2Key, size: j.size ?? 0 }] : [],
           r2Only: false,
+          discarded,
           mark: async (at, err) => {
             if (at) j.zoomDeletedAt = at;
             j.lastError = err ?? undefined;
@@ -127,7 +132,8 @@ export async function purgeZoom(
       if (r.zoomDeletedAt) continue;
       const yt = r.match?.youtubeUrl;
       const r2OnlyOk = r.date < LEGACY_R2_ONLY_BEFORE;
-      if (!r.r2Done || (!yt && !r2OnlyOk)) {
+      const discarded = !!r.r2DeletedAt;
+      if (!discarded && (!r.r2Done || (!yt && !r2OnlyOk))) {
         res.waiting++;
         continue;
       }
@@ -138,6 +144,7 @@ export async function purgeZoom(
         youtube: videoId(yt),
         r2: r.files.filter((f) => f.r2Key).map((f) => ({ key: f.r2Key as string, size: f.size })),
         r2Only: !yt,
+        discarded,
         mark: async (at, err) => {
           if (at) rec.zoomDeletedAt = at;
           rec.lastError = err ?? undefined;
@@ -151,22 +158,24 @@ export async function purgeZoom(
     const pick = cands.slice(0, PER_RUN);
     res.waiting += cands.length - pick.length;
 
-    const ids = pick.map((c) => c.youtube).filter((x): x is string => !!x);
+    const ids = pick.filter((c) => !c.discarded).map((c) => c.youtube).filter((x): x is string => !!x);
     const ready = ids.length ? await youtubeReady(ids, await ytToken()) : new Map<string, string>();
     const token = await zoomToken(env);
 
     for (const c of pick) {
       // R2 の実物を確かめる
       let why = "";
-      if (!c.r2.length) why = "R2 のファイルの控えが無い";
-      for (const f of c.r2) {
+      if (c.discarded) {
+        // 要らないと決めた録画：R2 と YouTube は確かめない
+      } else if (!c.r2.length) why = "R2 のファイルの控えが無い";
+      for (const f of c.discarded ? [] : c.r2) {
         if (why) break;
         const h = await env.STORE.head(f.key);
         if (!h) why = `R2 にファイルが無い（${f.key}）`;
         else if (f.size > 0 && h.size !== f.size) why = `R2 の大きさが合わない（${f.key}）`;
       }
       // YouTube の実物を確かめる（R2 だけで消してよい古い録画は見ない）
-      if (!why && !c.r2Only) {
+      if (!why && !c.r2Only && !c.discarded) {
         const st = c.youtube ? ready.get(c.youtube) : undefined;
         if (!c.youtube || st === undefined) why = "YouTube に動画が見つからない";
         else if (st !== "processed") why = `YouTube の取り込みが終わっていない（${st || "不明"}）`;
