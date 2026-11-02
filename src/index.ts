@@ -1,5 +1,14 @@
 /**
- * zoom-to-youtube / 第12版（2026-09-08 開発部・コンテンツくんと繋ぐ）
+ * zoom-to-youtube / 第18版（2026-11-02 開発部・録画の自動保管 便 1：見つける・名前を付ける・原本を R2 へ）
+ *
+ * 第18版で足したこと（経理系の依頼 1・作る前の 1 枚に Naoki OK 2026-11-02）
+ *   1. 見つける：5 分ごとの実行の最初に Zoom の録画一覧を見て、新しい録画の行を受け付けの台帳に足す。
+ *      人が共有リンクを貼らなくてよくなる（貼った行も今までどおり通る。同じ録画は二重に上げない）
+ *   2. 名前を付ける：文字起こしを Workers AI に読ませ、YouTube のタイトルと概要欄（3 行の要約と目次）、
+ *      R2 のファイル名（日付_会の名前_話題）を作る。会員の名前は入れない（archive.ts の決め）
+ *   3. 原本を R2 へ：Drive と YouTube の前に、Zoom の動画をそのまま R2 の recordings/ の下へ入れる
+ *   4. 一覧：ArchiveApi（RPC）。shia2n-mcp の道具 zoom_archive__list が呼ぶ。限定公開の住所が載るので公開の口にはしない
+ *   Zoom から消すのは便 3。この版では消さない
  *
  * 第9版で足したこと
  *   /privacy と /terms の 2 つを足した。中身は 1 画面ぶんの文章だけで、
@@ -49,9 +58,22 @@
 
 import { handleTensakuCommit, handleTensakuNotify } from "./tensaku";
 import { manageStatus, reapplyFormats, syncContentOs, syncManabu, syncManageSheet } from "./manage";
+import {
+  AUTO_FROM,
+  decideR2Key,
+  discoverNew,
+  nameRecording,
+  sendToR2,
+  setSheetFailureReader,
+  type Naming,
+} from "./archive";
+
+export { ArchiveApi } from "./archive";
 
 interface Env {
   STORE: R2Bucket;
+  /** 第18版：名前付けに使う Workers AI の結び */
+  AI?: Ai;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   ALLOWED_EMAIL?: string;
@@ -179,6 +201,20 @@ interface Job {
   youtubeId?: string;
   youtubeUrl?: string;
   privacy?: string;
+  /** 第18版：名前付けの結果 */
+  naming?: Naming;
+  /** 第18版：原本の R2 の置き場と、分割アップロードの途中経過 */
+  r2Key?: string;
+  r2UploadId?: string;
+  r2Parts?: { partNumber: number; etag: string }[];
+  r2Done?: boolean;
+  r2VttDone?: boolean;
+  /** 第18版：Zoom の会議の番号（便 3 で Zoom から消すときに使う） */
+  meetingUuid?: string;
+  /** 便 3 で入る。Zoom のゴミ箱へ移した日時 */
+  zoomDeletedAt?: string;
+  /** 第18版：最後に止まった理由（うまくいったら消す） */
+  lastError?: string;
   updatedAt: string;
 }
 
@@ -866,6 +902,29 @@ async function writeRow(token: string, id: string, rowNo: number, row: string[])
   );
 }
 
+/** 第18版：自動で見つけた録画の行を台帳の末尾に足す（題名は空。名前付けが入れる） */
+async function appendRow(token: string, id: string, share: string): Promise<void> {
+  const row = [`R${Date.now().toString(36)}`, share, "", "", "", "", "", "", new Date().toISOString()];
+  await gJson(
+    token,
+    `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent("受付!A:I")}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ values: [row] }) },
+  );
+}
+
+// 第18版：一覧（ArchiveApi）に台帳のエラーの行を出すための読み方
+setSheetFailureReader(async (env) => {
+  const ws = await accessToken(env as Env, "workspace");
+  if (!ws.ok) return [{ where: "台帳", what: "受け付けの台帳", error: ws.why }];
+  const sid = await sheetId(env as Env);
+  if (!sid) return [{ where: "台帳", what: "受け付けの台帳", error: "台帳がまだありません" }];
+  const rows = await readRows(ws.token, sid);
+  return rows
+    .map((r, i) => ({ r, no: i + 2 }))
+    .filter(({ r }) => (r[COL.state] ?? "").trim() === "エラー")
+    .map(({ r, no }) => ({ where: "台帳", what: `${no}行目 ${(r[COL.title] ?? "").trim() || "（題名なし）"}`, error: (r[COL.error] ?? "").slice(0, 300) }));
+});
+
 /* ================================================================== */
 /* 1行ぶんの処理                                                       */
 /* ================================================================== */
@@ -887,6 +946,7 @@ async function processRow(
   };
 
   if (!row[COL.id]) row[COL.id] = `R${Date.now().toString(36)}`;
+  let jobRef: Job | null = null;
 
   try {
     out(`【${rowNo}行目】${row[COL.title] || "（題名なし）"}`);
@@ -895,7 +955,6 @@ async function processRow(
 
     const z = await readZoom(row[COL.share].trim());
     const when = jst(z.startedAt);
-    const title = safeName(row[COL.title] || z.topic || "無題");
     row[COL.date] = when.date;
     out(`  収録日 ${when.date} ／ 長さ ${Math.round(z.durationSec / 60)} 分`);
 
@@ -916,6 +975,7 @@ async function processRow(
 
     // 同じ録画がすでに上がっていないか
     let job = await loadJob(env, z.recId);
+    jobRef = job;
     if (job?.youtubeUrl && job.rowNo !== rowNo) {
       row[COL.drive] = job.driveFolderUrl ?? "";
       row[COL.youtube] = job.youtubeUrl;
@@ -932,6 +992,23 @@ async function processRow(
     if (!size) throw new Error("動画の大きさが分かりません（Zoom が content-range を返しません）");
     out(`  動画の大きさ ${mb(size)} MB`);
 
+    /**
+     * 第18版：名前を付ける。題名の決め方より前に置く。
+     * 台帳に人が題名を入れた行はその題名を使い、空の行（自動で足した行）は AI が付けた名前を使う。
+     * Zoom の会議名は使わない（会員の名前が入っていることがあるため）。
+     */
+    const humanTitle = (row[COL.title] ?? "").trim();
+    let naming = job?.naming;
+    if (!naming) {
+      naming = await nameRecording(env, z.transcript, when.date, z.durationSec, humanTitle);
+      const label = { ai: "AI が付けた", blocked: "名前が混ざったので止めた", no_transcript: "文字起こしが無い", failed: "AI が答えなかった" }[naming.mode];
+      out(`  名前付け：${label}（会 ${naming.kai}${naming.note ? "・" + naming.note : ""}）`);
+    } else {
+      out("  名前付けは済んでいます");
+    }
+    if (!humanTitle) row[COL.title] = naming.title;
+    const title = safeName(row[COL.title] || naming.title || "無題");
+
     if (!job) {
       job = { recId: z.recId, share: row[COL.share].trim(), rowNo, title, date: when.date, size, updatedAt: "" };
     } else {
@@ -941,7 +1018,10 @@ async function processRow(
       job.size = size;
       out("  前回の途中経過が残っていました。続きから進めます");
     }
+    job.naming = naming;
+    job.meetingUuid = z.meetingUuid;
     await saveJob(env, job);
+    jobRef = job;
     const j = job;
 
     // ドライブの置き場を用意する
@@ -994,6 +1074,39 @@ async function processRow(
       );
     }
 
+    // 第18版：原本を R2 へ（Drive と YouTube より先に。原本の保管がいちばん大事なため）
+    if (j.r2Done) {
+      out("  原本は R2 に入っています");
+    } else {
+      if (!j.r2Key) {
+        j.r2Key = await decideR2Key(env, when.date, naming.kai, naming.topic);
+        await saveJob(env, j);
+      }
+      out(`  原本を R2 へ（${j.r2Key}）`);
+      await sendToR2(
+        env,
+        j,
+        size,
+        CHUNK,
+        async (start, end) => {
+          const part = await fetch(z.mp4Url, { headers: { ...zHeaders(z.jar, z.playUrl), Range: `bytes=${start}-${end}` } });
+          if (part.status !== 206 && part.status !== 200) throw new Error(`Zoom が動画の一部を返しません（${part.status}）`);
+          return part.arrayBuffer();
+        },
+        () => saveJob(env, j),
+        out,
+        beat,
+      );
+    }
+    if (!j.r2VttDone && j.r2Key) {
+      if (z.transcript) {
+        await env.STORE.put(j.r2Key.replace(/\.mp4$/, ".vtt"), z.transcript, { httpMetadata: { contentType: "text/vtt; charset=utf-8" } });
+        out("  文字起こしも R2 へ入れた");
+      }
+      j.r2VttDone = true;
+      await saveJob(env, j);
+    }
+
     // 動画をドライブへ
     if (j.driveDone) {
       out("  動画はドライブへ保存済みです");
@@ -1042,7 +1155,8 @@ async function processRow(
             yt.token,
             "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
             {
-              snippet: { title: (row[COL.title] || z.topic || "無題").slice(0, 100), description: "" },
+              // 第18版：タイトルは台帳の題名（空の行は AI が付けた名前）、概要欄は AI の要約と目次
+              snippet: { title: (row[COL.title] || naming.title || "無題").slice(0, 100), description: naming.description },
               /**
                * 2026-08-20：この チャンネル では、上げたあと手で 限定公開 に変えても
                * 非公開に戻されないことを実物で確認した（固定は掛かっていない）。
@@ -1074,12 +1188,24 @@ async function processRow(
     const jp = privacy === "unlisted" ? "限定公開" : privacy === "private" ? "非公開" : privacy;
     out(`  YouTube 側の公開設定：${jp}`);
 
+    if (j.lastError) {
+      j.lastError = undefined;
+      await saveJob(env, j);
+    }
     // 限定公開で頼んだのに非公開になった場合は、Naoki が手で直せるように印を残す
     await set("完了", jp === "限定公開" ? "" : `YouTube 側で ${jp} になりました。手で 限定公開 に変えてください`);
     out(`  完了：${row[COL.youtube]}`);
   } catch (e) {
     const why = e instanceof Error ? e.message : String(e);
     out(`  エラー：${why}`);
+    if (jobRef) {
+      try {
+        jobRef.lastError = why.slice(0, 500);
+        await saveJob(env, jobRef);
+      } catch {
+        /* 控えに残せなくても、台帳には残す */
+      }
+    }
     try {
       await set("エラー", why.slice(0, 900));
     } catch {
@@ -1178,6 +1304,11 @@ async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<vo
     return;
   }
 
+  // 第18版：新しい録画を見つけて台帳に行を足す（足した行はこの実行でそのまま通す）
+  const found = await discoverNew(env, (share) => appendRow(ws.token, sid, share));
+  if (found.error) out(`見つける：止まりました：${found.error}`);
+  else out(`見つける：足した ${found.added.length} 件／文字起こしなどを待っている ${found.waiting} 件（${AUTO_FROM} より前は便 2 で移す）`);
+
   /**
    * 錠を取れた実行から見ると、他の実行は走っていない。
    * だから「処理の途中」の状態のまま残っている行は、必ず前の実行が落ちた残り。
@@ -1198,6 +1329,7 @@ async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<vo
 
   const notes: string[] = [];
   const failures: string[] = [];
+  if (found.error) failures.push(`Zoom の録画一覧を読めなかった：${found.error.slice(0, 300)}`);
   for (const t of targets) {
     if (Date.now() - started > RUN_BUDGET_MS) {
       out(`ここで一度畳みます（${sec(Date.now() - started)} 秒）。残りは次の自動実行が続けます。`);
@@ -1740,6 +1872,9 @@ export default {
             "  /privacy       プライバシーポリシー",
             "  /terms         利用規約",
             "  /youtube/list  チャンネルの本数を公開の別ごとに数える（何も上げない）",
+            "",
+            "第18版：新しい録画は Zoom の一覧から自動で台帳に入る。原本は R2 の recordings/ の下。",
+            "録画ごとの一覧は shia2n-mcp の道具 zoom_archive__list（限定公開の住所が載るので、ここには出さない）",
           ].join("\n"),
         );
 
