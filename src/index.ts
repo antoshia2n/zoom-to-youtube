@@ -1,5 +1,10 @@
 /**
- * zoom-to-youtube / 第18版（2026-11-02 開発部・録画の自動保管 便 1：見つける・名前を付ける・原本を R2 へ）
+ * zoom-to-youtube / 第19版（2026-11-02 開発部・録画の自動保管 便 2：今ある録画を R2 へ移す）
+ *
+ * 第19版で足したこと（経理系の依頼 1 便 2）
+ *   5 分ごとの実行の最後に、残り時間で 2026-11-02 より前の録画を Zoom から R2 へ運ぶ（legacy.ts）。
+ *   会議 1 回ぶんのファイルを全部入れ、YouTube に上げ済みのものは上げ直さずに、その題名をファイル名に使う。
+ *   YouTube と結び付かなかったものは上げない（一覧に出して、本数を見てから決める）。Zoom からは消さない
  *
  * 第18版で足したこと（経理系の依頼 1・作る前の 1 枚に Naoki OK 2026-11-02）
  *   1. 見つける：5 分ごとの実行の最初に Zoom の録画一覧を見て、新しい録画の行を受け付けの台帳に足す。
@@ -64,9 +69,12 @@ import {
   discoverNew,
   nameRecording,
   sendToR2,
+  setLegacyReader,
   setSheetFailureReader,
+  type ArchiveRow,
   type Naming,
 } from "./archive";
+import { legacyRows, mainVideo, migrateLegacy } from "./legacy";
 
 export { ArchiveApi } from "./archive";
 
@@ -912,6 +920,42 @@ async function appendRow(token: string, id: string, share: string): Promise<void
   );
 }
 
+// 第19版：一覧（ArchiveApi）に古い録画の行を出すための読み方
+setLegacyReader(async (env) => {
+  const recs = await legacyRows(env);
+  const rows: ArchiveRow[] = recs.map((r) => {
+    const main = mainVideo(r.files);
+    return {
+      rec_id: r.uuid,
+      date: r.date,
+      title: r.match?.title ?? r.naming?.title ?? "",
+      r2: !!r.r2Done,
+      r2_key: r.r2Done ? (main?.r2Key ?? r.files[0]?.r2Key ?? null) : null,
+      youtube: !!r.match?.youtubeUrl,
+      youtube_url: r.match?.youtubeUrl ?? null,
+      zoom_deleted: !!r.zoomDeletedAt,
+      zoom_deleted_at: r.zoomDeletedAt ?? null,
+      naming: r.naming?.mode ?? "未",
+      naming_note: [r.naming?.note, r.match?.kind === "none" ? r.match.note : null].filter(Boolean).join("・") || null,
+      updated_at: r.updatedAt,
+      kind: "legacy",
+      size_gb: Math.round((r.totalSize / 1073741824) * 100) / 100,
+    };
+  });
+  const remaining = recs.reduce((a, r) => a + r.files.filter((f) => !f.r2Done).reduce((b, f) => b + f.size, 0), 0);
+  return {
+    rows,
+    failures: recs.filter((r) => r.lastError).map((r) => ({ where: "古い録画", what: r.date, error: r.lastError as string })),
+    coveredJobRecIds: recs.map((r) => r.match?.jobRecId ?? "").filter(Boolean),
+    summary: {
+      total: recs.length,
+      r2_done: recs.filter((r) => r.r2Done).length,
+      remaining_gb: Math.round((remaining / 1073741824) * 100) / 100,
+      youtube_none: recs.filter((r) => r.match?.kind === "none").length,
+    },
+  };
+});
+
 // 第18版：一覧（ArchiveApi）に台帳のエラーの行を出すための読み方
 setSheetFailureReader(async (env) => {
   const ws = await accessToken(env as Env, "workspace");
@@ -1393,6 +1437,31 @@ async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<vo
     const why = `学ぶくんへの反映に失敗：${e instanceof Error ? e.message : String(e)}`;
     out(why);
     failures.push(why.slice(0, 300));
+  }
+  // 第19版：残り時間で、11/02 より前の録画を R2 へ運ぶ（Zoom からは消さない）
+  if (Date.now() - started < RUN_BUDGET_MS - 60000) {
+    out("");
+    const lg = await migrateLegacy(
+      env,
+      started + RUN_BUDGET_MS - 20000,
+      async () => {
+        const yt = await accessToken(env, "youtube");
+        if (!yt.ok) throw new Error(yt.why);
+        return yt.token;
+      },
+      out,
+      beat,
+    );
+    if (lg.error) {
+      out(`古い録画：止まりました：${lg.error}`);
+      failures.push(`古い録画を R2 へ移せなかった：${lg.error.slice(0, 300)}`);
+    } else {
+      out(
+        `古い録画：全 ${lg.total} 回／R2 に入り終えた ${lg.done} 回／この実行で運んだ ${mb(lg.movedBytes)} MB／` +
+          `残り ${(lg.remainingBytes / 1073741824).toFixed(1)} GB／YouTube 結び付き 控え ${lg.matched.job}・長さ ${lg.matched.youtube}・無し ${lg.matched.none}`,
+      );
+      if (lg.errors.length) failures.push(`古い録画の移しでエラー ${lg.errors.length} 件（zoom_archive__list の failures に中身）`);
+    }
   }
   await notifyRun(env, ws.token, notes, failures, out);
   out("ここまでです。");

@@ -308,17 +308,30 @@ export async function nameRecording(
 /* Zoom の録画一覧から新しい録画を見つける                             */
 /* ------------------------------------------------------------------ */
 
-interface ZoomMeeting {
+export interface ZoomRecFile {
+  id?: string;
+  file_type?: string;
+  file_extension?: string;
+  file_size?: number;
+  download_url?: string;
+  recording_type?: string;
+  recording_start?: string;
+  recording_end?: string;
+  status?: string;
+}
+
+export interface ZoomMeeting {
   uuid?: string;
   topic?: string;
   start_time?: string;
   duration?: number;
+  total_size?: number;
   share_url?: string;
   recording_play_passcode?: string;
-  recording_files?: { file_type?: string; status?: string; recording_end?: string }[];
+  recording_files?: ZoomRecFile[];
 }
 
-async function zoomToken(env: ArchiveEnv): Promise<string> {
+export async function zoomToken(env: ArchiveEnv): Promise<string> {
   if (!env.ZOOM_ACCOUNT_ID || !env.ZOOM_CLIENT_ID || !env.ZOOM_CLIENT_SECRET) {
     throw new Error("Zoom 本体の口の設定（ZOOM_ACCOUNT_ID・ZOOM_CLIENT_ID・ZOOM_CLIENT_SECRET）が足りません");
   }
@@ -461,7 +474,9 @@ export async function sendToR2(
   save: () => Promise<void>,
   out: (s: string) => void,
   beat: () => Promise<void>,
-): Promise<void> {
+  /** 第19版：true を返したら、そこまでを控えに残して止まる（続きは次の実行）。止まったときは false を返す */
+  shouldStop?: () => boolean,
+): Promise<boolean> {
   if (!p.r2Key) throw new Error("R2 の置き場の名前が決まっていません");
   const key = p.r2Key;
   const done = await env.STORE.head(key);
@@ -471,7 +486,7 @@ export async function sendToR2(
     p.r2Parts = undefined;
     await save();
     out("      R2 には入っていました");
-    return;
+    return true;
   }
 
   let upload: R2MultipartUpload | null = null;
@@ -494,6 +509,12 @@ export async function sendToR2(
   try {
     let sent = parts.length * chunk;
     while (sent < size) {
+      if (shouldStop?.()) {
+        await save();
+        await beat();
+        out(`      ここで止めて、続きは次の実行で入れます（${(sent / 1048576).toFixed(1)} / ${(size / 1048576).toFixed(1)} MB）`);
+        return false;
+      }
       const end = Math.min(sent + chunk, size) - 1;
       const buf = await readRange(sent, end);
       if (buf.byteLength !== end - sent + 1) {
@@ -529,6 +550,7 @@ export async function sendToR2(
   p.r2UploadId = undefined;
   p.r2Parts = undefined;
   await save();
+  return true;
 }
 
 /* ------------------------------------------------------------------ */
@@ -548,6 +570,10 @@ export interface ArchiveRow {
   naming: string;
   naming_note: string | null;
   updated_at: string;
+  /** 第19版：new＝11/02 以降に録った録画（台帳から）／legacy＝それより前の録画（便 2 で移す） */
+  kind: "new" | "legacy";
+  /** 第19版：会議 1 回ぶんの大きさ（GB） */
+  size_gb: number | null;
 }
 
 export interface ArchiveListResult {
@@ -555,6 +581,8 @@ export interface ArchiveListResult {
   count: number;
   counts: { r2: number; youtube: number; both: number; zoom_deleted: number };
   rows: ArchiveRow[];
+  /** 第19版：古い録画の移しの進み具合 */
+  legacy: { total: number; r2_done: number; remaining_gb: number; youtube_none: number };
   failure_count: number;
   failures: { where: string; what: string; error: string }[];
 }
@@ -603,11 +631,23 @@ export async function buildArchiveList(
         naming: j.naming?.mode ?? "未",
         naming_note: j.naming?.note ?? null,
         updated_at: j.updatedAt ?? "",
+        kind: "new",
+        size_gb: null,
       });
       if (j.lastError) failures.push({ where: "録画", what: `${j.date ?? ""} ${j.title ?? j.recId}`, error: j.lastError });
     }
     if (!page.truncated) break;
     cursor = page.cursor;
+  }
+  // 第19版：古い録画の行を足す。台帳の控えと結び付いた録画は、控えの行を外して古い録画の行 1 本にする
+  const legacy = { total: 0, r2_done: 0, remaining_gb: 0, youtube_none: 0 };
+  if (legacyReader) {
+    const got = await legacyReader(env);
+    const covered = new Set(got.coveredJobRecIds);
+    for (let i = rows.length - 1; i >= 0; i--) if (rows[i].kind === "new" && covered.has(rows[i].rec_id) && !rows[i].r2) rows.splice(i, 1);
+    rows.push(...got.rows);
+    failures.push(...got.failures);
+    Object.assign(legacy, got.summary);
   }
   rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 
@@ -631,9 +671,22 @@ export async function buildArchiveList(
       zoom_deleted: rows.filter((r) => r.zoom_deleted).length,
     },
     rows,
+    legacy,
     failure_count: failures.length,
     failures,
   };
+}
+
+/** 第19版：index.ts から古い録画の行の読み方を差し込む（legacy.ts が archive.ts を使うので、逆向きに読まない） */
+export interface LegacyReadout {
+  rows: ArchiveRow[];
+  failures: { where: string; what: string; error: string }[];
+  coveredJobRecIds: string[];
+  summary: { total: number; r2_done: number; remaining_gb: number; youtube_none: number };
+}
+let legacyReader: ((env: ArchiveEnv) => Promise<LegacyReadout>) | null = null;
+export function setLegacyReader(f: typeof legacyReader): void {
+  legacyReader = f;
 }
 
 /** index.ts から台帳の失敗の読み方を差し込む（Google の鍵まわりは index.ts が持つ） */
