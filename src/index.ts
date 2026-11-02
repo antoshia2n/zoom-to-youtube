@@ -1,5 +1,12 @@
 /**
- * zoom-to-youtube / 第19版（2026-11-02 開発部・録画の自動保管 便 2：今ある録画を R2 へ移す）
+ * zoom-to-youtube / 第20版（2026-11-02 開発部・録画の自動保管 便 3：両方そろった録画を Zoom のゴミ箱へ）
+ *
+ * 第20版で足したこと（経理系の依頼 1 便 3）
+ *   5 分ごとの実行で、R2 と YouTube の両方にそろった録画だけを Zoom のゴミ箱へ移す（purge.ts）。
+ *   消す前に毎回、R2 の大きさと YouTube の取り込みを実物で確かめる。1 回 30 本まで。
+ *   11/02 より前で YouTube と結び付かない録画は、purge.ts の LEGACY_R2_ONLY_OK が true のときだけ R2 だけで消す。
+ *   あわせて直したこと：一覧に大きさが出ていないファイルを丸ごと読んでメモリの上限に当たっていたのを、
+ *   先に本当の大きさを聞いてから分けて入れる形にした（legacy.ts）
  *
  * 第19版で足したこと（経理系の依頼 1 便 2）
  *   5 分ごとの実行の最後に、残り時間で 2026-11-02 より前の録画を Zoom から R2 へ運ぶ（legacy.ts）。
@@ -75,6 +82,7 @@ import {
   type Naming,
 } from "./archive";
 import { legacyRows, mainVideo, migrateLegacy } from "./legacy";
+import { purgeZoom } from "./purge";
 
 export { ArchiveApi } from "./archive";
 
@@ -1438,6 +1446,23 @@ async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<vo
     out(why);
     failures.push(why.slice(0, 300));
   }
+  // 第20版：R2 と YouTube の両方にそろった録画を Zoom のゴミ箱へ移す
+  const ytTokenFn = async () => {
+    const yt = await accessToken(env, "youtube");
+    if (!yt.ok) throw new Error(yt.why);
+    return yt.token;
+  };
+  if (Date.now() - started < RUN_BUDGET_MS - 90000) {
+    const pg = await purgeZoom(env, ytTokenFn, out);
+    if (pg.error) {
+      out(`Zoom から消す：止まりました：${pg.error}`);
+      failures.push(`Zoom から消す処理が止まった：${pg.error.slice(0, 300)}`);
+    } else {
+      out(`Zoom から消す：ゴミ箱へ移した ${pg.trashed} 件／両方そろうのを待っている ${pg.waiting} 件／確かめで止めた ${pg.blocked.length} 件`);
+      if (pg.blocked.length) failures.push(`Zoom から消すのを確かめで止めた：${pg.blocked.length} 件（zoom_archive__list の failures に中身）`);
+    }
+  }
+
   // 第19版：残り時間で、11/02 より前の録画を R2 へ運ぶ（Zoom からは消さない）
   if (Date.now() - started < RUN_BUDGET_MS - 60000) {
     out("");
