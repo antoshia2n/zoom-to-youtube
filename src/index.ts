@@ -1,5 +1,11 @@
 /**
- * zoom-to-youtube / 第20版（2026-11-02 開発部・録画の自動保管 便 3：両方そろった録画を Zoom のゴミ箱へ）
+ * zoom-to-youtube / 第21版（2026-11-02 開発部・録画の自動保管 便 4：R2 の録画を探す・消す）
+ *
+ * 第21版で足したこと（経理系の依頼 1 便 4・Naoki OK 2026-11-02 14:29）
+ *   ArchiveApi（api.ts）に search（探す）と remove（R2 から消す・下見が既定）を足した。list は既定で数と失敗だけを返す。
+ *   消した録画は R2 へ入れ直さず、Zoom に残っていれば次の実行でゴミ箱へ移す（purge.ts）。
+ *   あわせて直したこと：途中から読む頼みでメモリの上限に当たったファイルが、前の分割アップロードの控えが残っていて
+ *   流しながら入れる道へ入れなかった（2022-07-31・2023-04-11）。次から流しながら入れる（legacy.ts）
  *
  * 第20版で足したこと（経理系の依頼 1 便 3）
  *   5 分ごとの実行で、R2 と YouTube の両方にそろった録画だけを Zoom のゴミ箱へ移す（purge.ts）。
@@ -84,7 +90,7 @@ import {
 import { legacyRows, mainVideo, migrateLegacy } from "./legacy";
 import { purgeZoom } from "./purge";
 
-export { ArchiveApi } from "./archive";
+export { ArchiveApi } from "./api";
 
 interface Env {
   STORE: R2Bucket;
@@ -229,6 +235,8 @@ interface Job {
   meetingUuid?: string;
   /** 便 3 で入る。Zoom のゴミ箱へ移した日時 */
   zoomDeletedAt?: string;
+  /** 第21版：探す・消す道具で R2 から消した日時 */
+  r2DeletedAt?: string;
   /** 第18版：最後に止まった理由（うまくいったら消す） */
   lastError?: string;
   updatedAt: string;
@@ -937,12 +945,14 @@ setLegacyReader(async (env) => {
       rec_id: r.uuid,
       date: r.date,
       title: r.match?.title ?? r.naming?.title ?? "",
-      r2: !!r.r2Done,
-      r2_key: r.r2Done ? (main?.r2Key ?? r.files[0]?.r2Key ?? null) : null,
+      r2: !!r.r2Done && !r.r2DeletedAt,
+      r2_key: r.r2Done && !r.r2DeletedAt ? (main?.r2Key ?? r.files[0]?.r2Key ?? null) : null,
       youtube: !!r.match?.youtubeUrl,
       youtube_url: r.match?.youtubeUrl ?? null,
       zoom_deleted: !!r.zoomDeletedAt,
       zoom_deleted_at: r.zoomDeletedAt ?? null,
+      kai: r.naming?.kai ?? null,
+      r2_deleted_at: r.r2DeletedAt ?? null,
       naming: r.naming?.mode ?? "未",
       naming_note: [r.naming?.note, r.match?.kind === "none" ? r.match.note : null].filter(Boolean).join("・") || null,
       updated_at: r.updatedAt,
@@ -950,7 +960,7 @@ setLegacyReader(async (env) => {
       size_gb: Math.round((r.totalSize / 1073741824) * 100) / 100,
     };
   });
-  const remaining = recs.reduce((a, r) => a + r.files.filter((f) => !f.r2Done).reduce((b, f) => b + f.size, 0), 0);
+  const remaining = recs.filter((r) => !r.r2DeletedAt).reduce((a, r) => a + r.files.filter((f) => !f.r2Done).reduce((b, f) => b + f.size, 0), 0);
   return {
     rows,
     failures: recs.filter((r) => r.lastError).map((r) => ({ where: "古い録画", what: r.date, error: r.lastError as string })),
