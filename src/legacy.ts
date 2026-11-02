@@ -341,6 +341,25 @@ async function readZoomRange(token: string, url: string, start: number, end: num
   return res.arrayBuffer();
 }
 
+/** 先頭 1 バイトを頼み、返りの content-range から本当の大きさを取る。分からなければ null */
+async function probeZoomSize(token: string, url: string): Promise<number | null> {
+  const first = await fetch(url, { headers: { authorization: `Bearer ${token}`, Range: "bytes=0-0" }, redirect: "manual" });
+  let res = first;
+  if (first.status >= 300 && first.status < 400) {
+    const loc = first.headers.get("location");
+    await first.body?.cancel();
+    if (!loc) return null;
+    res = await fetch(new URL(loc, url).toString(), { headers: { Range: "bytes=0-0" } });
+  }
+  const cr = res.headers.get("content-range");
+  const len = res.headers.get("content-length");
+  await res.body?.cancel();
+  if (res.status === 416) return 0;
+  if (cr && /\/\d+$/.test(cr)) return Number(cr.split("/")[1]);
+  if (res.status === 200 && len) return Number(len);
+  return null;
+}
+
 async function readZoomText(token: string, url: string): Promise<string | null> {
   const first = await fetch(url, { headers: { authorization: `Bearer ${token}` }, redirect: "manual" });
   let r = first;
@@ -434,13 +453,19 @@ export async function migrateLegacy(
           if (f.r2Done) continue;
           if (stop()) break;
           if (f.size <= 0) {
-            // 大きさの分からない小さなファイル（チャットなど）はまとめて 1 回で読む
-            const t = await readZoomText(zoom, f.url);
-            if (t === null) throw new Error(`${f.type} のファイルを読めません`);
-            await env.STORE.put(f.r2Key as string, t);
-            f.r2Done = true;
+            // 第20版：一覧に大きさが出ていないファイルは、まず先頭 1 バイトを頼んで本当の大きさを聞く。
+            // （第19版は丸ごと読もうとして、大きな動画でメモリの上限に当たった・2026-11-02 の 2022-07-31）
+            const real = await probeZoomSize(zoom, f.url);
+            if (real === null) throw new Error(`${f.type} のファイルの大きさが分かりません`);
+            if (real === 0) {
+              await env.STORE.put(f.r2Key as string, "");
+              f.r2Done = true;
+              await saveRec(env, rec);
+              continue;
+            }
+            f.size = real;
+            rec.totalSize = rec.files.reduce((a, x) => a + x.size, 0);
             await saveRec(env, rec);
-            continue;
           }
           const before = (f.r2Parts?.length ?? 0) * LEGACY_CHUNK;
           const token = zoom;
