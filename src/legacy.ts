@@ -341,6 +341,103 @@ async function readZoomRange(token: string, url: string, start: number, end: num
   return res.arrayBuffer();
 }
 
+/** 先頭 1 バイトを頼み、途中から読めるか（206）と本当の大きさを聞く */
+async function probeZoom(token: string, url: string): Promise<{ size: number | null; ranged: boolean }> {
+  const first = await fetch(url, { headers: { authorization: `Bearer ${token}`, Range: "bytes=0-0" }, redirect: "manual" });
+  let res = first;
+  if (first.status >= 300 && first.status < 400) {
+    const loc = first.headers.get("location");
+    await first.body?.cancel();
+    if (!loc) return { size: null, ranged: false };
+    res = await fetch(new URL(loc, url).toString(), { headers: { Range: "bytes=0-0" } });
+  }
+  const cr = res.headers.get("content-range");
+  const len = res.headers.get("content-length");
+  await res.body?.cancel();
+  if (res.status === 416) return { size: 0, ranged: true };
+  if (res.status === 206 && cr && /\/\d+$/.test(cr)) return { size: Number(cr.split("/")[1]), ranged: true };
+  if (res.status === 200) return { size: len ? Number(len) : null, ranged: false };
+  return { size: null, ranged: false };
+}
+
+/**
+ * 第20版の 2 回目の直し：途中から読む頼みを聞かず丸ごと返してくるファイルは、流れてくるそばから 16MB ずつ R2 へ入れる。
+ * 途中で止めると続きからは入れられないので、時間が足りなければ分割アップロードを捨てて次の実行で最初からやり直す。
+ */
+async function streamZoomToR2(
+  env: ArchiveEnv,
+  token: string,
+  f: LegacyFile,
+  deadline: number,
+  out: (s: string) => void,
+  beat: () => Promise<void>,
+): Promise<boolean> {
+  const PART = 16 * 1024 * 1024;
+  const first = await fetch(f.url, { headers: { authorization: `Bearer ${token}` }, redirect: "manual" });
+  let res = first;
+  if (first.status >= 300 && first.status < 400) {
+    const loc = first.headers.get("location");
+    await first.body?.cancel();
+    if (!loc) throw new Error("Zoom のダウンロードの飛び先がありません");
+    res = await fetch(new URL(loc, f.url).toString());
+  }
+  if (!res.ok || !res.body) throw new Error(`Zoom がファイルを返しません（${res.status}）`);
+  const key = f.r2Key as string;
+  const upload = await env.STORE.createMultipartUpload(key, { httpMetadata: { contentType: f.type === "MP4" ? "video/mp4" : "application/octet-stream" } });
+  const parts: R2UploadedPart[] = [];
+  const reader = res.body.getReader();
+  let buf = new Uint8Array(PART);
+  let fill = 0;
+  let total = 0;
+  try {
+    for (;;) {
+      if (Date.now() > deadline) {
+        await reader.cancel();
+        await upload.abort();
+        out(`      時間が足りないので、このファイル（${(f.size / 1048576).toFixed(0)} MB）は次の実行で最初から入れ直します`);
+        return false;
+      }
+      const { done, value } = await reader.read();
+      if (done) break;
+      let off = 0;
+      while (off < value.byteLength) {
+        const n = Math.min(PART - fill, value.byteLength - off);
+        buf.set(value.subarray(off, off + n), fill);
+        fill += n;
+        off += n;
+        if (fill === PART) {
+          parts.push(await upload.uploadPart(parts.length + 1, buf));
+          total += fill;
+          buf = new Uint8Array(PART);
+          fill = 0;
+          await beat();
+        }
+      }
+    }
+    if (fill > 0 || parts.length === 0) {
+      parts.push(await upload.uploadPart(parts.length + 1, buf.subarray(0, fill)));
+      total += fill;
+    }
+    await upload.complete(parts);
+  } catch (e) {
+    try {
+      await upload.abort();
+    } catch {
+      /* 捨てられなくても次の実行で作り直す */
+    }
+    throw e;
+  }
+  const head = await env.STORE.head(key);
+  if (!head || (f.size > 0 && head.size !== f.size)) {
+    throw new Error(`R2 の大きさが Zoom と合いません（R2 ${head?.size ?? "無し"}・Zoom ${f.size}・読んだ ${total}）`);
+  }
+  if (f.size <= 0) f.size = head.size;
+  f.r2Done = true;
+  f.r2UploadId = undefined;
+  f.r2Parts = undefined;
+  return true;
+}
+
 /** 先頭 1 バイトを頼み、返りの content-range から本当の大きさを取る。分からなければ null */
 async function probeZoomSize(token: string, url: string): Promise<number | null> {
   const first = await fetch(url, { headers: { authorization: `Bearer ${token}`, Range: "bytes=0-0" }, redirect: "manual" });
@@ -466,6 +563,18 @@ export async function migrateLegacy(
             f.size = real;
             rec.totalSize = rec.files.reduce((a, x) => a + x.size, 0);
             await saveRec(env, rec);
+          }
+          // 途中から読めるかを、入れ始める前に 1 回だけ聞く（途中まで入っているものは読めると分かっている）
+          if (!f.r2UploadId) {
+            const pr = await probeZoom(zoom, f.url);
+            if (!pr.ranged) {
+              out(`      このファイルは途中から読めないので、流しながら入れます（${(f.size / 1048576).toFixed(0)} MB）`);
+              const okStream = await streamZoomToR2(env, zoom, f, deadline, out, beat);
+              await saveRec(env, rec);
+              if (okStream) res.movedBytes += f.size;
+              else break;
+              continue;
+            }
           }
           const before = (f.r2Parts?.length ?? 0) * LEGACY_CHUNK;
           const token = zoom;

@@ -8,14 +8,20 @@
  *   ・YouTube：動画があり、取り込みが終わっている（uploadStatus が processed）
  * 1 つでも合わなければ消さずに、理由を控えに残す。
  *
- * 11/02 より前の録画で YouTube と結び付かなかったものは、LEGACY_R2_ONLY_OK が true のときだけ R2 だけで消す
+ * 11/02 より前の録画で YouTube と結び付かなかったものは、LEGACY_R2_ONLY_BEFORE（2025-01-01）より前に録ったものだけ R2 だけで消す
  * （依頼の決めは「原本が 2 か所にそろうまで消さない」。変えるのは Naoki の判断で）。
  */
 import { zoomToken, type ArchiveEnv } from "./archive";
 import { legacyRows, recKey, type LegacyRec } from "./legacy";
 
-/** 11/02 より前で YouTube と結び付かない録画を、R2 だけで Zoom から消してよいか（Naoki の判断待ち・既定は消さない） */
-export const LEGACY_R2_ONLY_OK = false;
+/**
+ * YouTube と結び付かない古い録画を、R2 だけで Zoom から消してよい境目（この日より前に録ったもの）。
+ * 2026-11-02 14:39 Naoki「古い動画はだいたい不要で、新しく取り直すものも多い。過去に一度YouTubeに写してあるから大丈夫」
+ * 2026-11-02 14:46 Naoki「古いの基準は2024年以前ね。25年あたりのは使う可能性がある」→ 2025-01-01 より前だけ。
+ * 2025 年以降で YouTube と結び付かない録画は、R2 にそろっても Zoom に残す。
+ * 対象は R2 に全部入り終えて大きさを確かめたものだけで、Zoom ではゴミ箱へ移す（30 日は戻せる）
+ */
+export const LEGACY_R2_ONLY_BEFORE = "2025-01-01";
 /** 1 回の実行で Zoom のゴミ箱へ移す上限 */
 const PER_RUN = 30;
 
@@ -120,7 +126,8 @@ export async function purgeZoom(
     for (const r of await legacyRows(env)) {
       if (r.zoomDeletedAt) continue;
       const yt = r.match?.youtubeUrl;
-      if (!r.r2Done || (!yt && !LEGACY_R2_ONLY_OK)) {
+      const r2OnlyOk = r.date < LEGACY_R2_ONLY_BEFORE;
+      if (!r.r2Done || (!yt && !r2OnlyOk)) {
         res.waiting++;
         continue;
       }
