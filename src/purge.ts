@@ -1,5 +1,5 @@
 /**
- * zoom-to-youtube / purge.ts（第20版・2026-11-02 開発部・経理系の依頼 1 便 3）
+ * zoom-to-youtube / purge.ts（第20版・第22版で大きさの合わないファイルの入れ直しを足した・2026-11-02 開発部・経理系の依頼 1 便 3）
  *
  * R2 と YouTube の両方にそろった録画だけを、Zoom のゴミ箱へ移す（消すのではなく trash。30 日は Zoom 側で戻せる）。
  *
@@ -58,6 +58,11 @@ interface Candidate {
   /** 第21版：探す・消す道具で「要らない」と決めて R2 から消した録画。確かめずに Zoom のゴミ箱へ移す */
   discarded?: boolean;
   mark: (at: string | null, err: string | null) => Promise<void>;
+  /**
+   * 第22版：R2 の大きさが合わないファイルを、Zoom からもう一度入れ直すように戻す（古い録画だけ）。
+   * 置き場は新しい名前にする（合わないファイルが別の録画のものだった場合に上書きしないため）。
+   */
+  recopy?: (key: string) => Promise<string | null>;
 }
 
 /** YouTube の動画の取り込みが終わっているかを 50 本ずつ聞く */
@@ -151,6 +156,31 @@ export async function purgeZoom(
           rec.updatedAt = new Date().toISOString();
           await env.STORE.put(recKey(rec.uuid), JSON.stringify(rec));
         },
+        recopy: async (key) => {
+          const f = rec.files.find((x) => x.r2Key === key);
+          if (!f) return null;
+          const dot = key.lastIndexOf(".");
+          const stem = dot > 0 ? key.slice(0, dot) : key;
+          const ext = dot > 0 ? key.slice(dot) : "";
+          let next = "";
+          for (let n = 1; n < 50; n++) {
+            const k = `${stem}_re${n === 1 ? "" : n}${ext}`;
+            if (!(await env.STORE.head(k))) {
+              next = k;
+              break;
+            }
+          }
+          if (!next) return null;
+          f.r2Key = next;
+          f.r2Done = false;
+          f.r2UploadId = undefined;
+          f.r2Parts = undefined;
+          f.forceStream = undefined;
+          rec.r2Done = false;
+          rec.updatedAt = new Date().toISOString();
+          await env.STORE.put(recKey(rec.uuid), JSON.stringify(rec));
+          return next;
+        },
       });
     }
 
@@ -165,6 +195,7 @@ export async function purgeZoom(
     for (const c of pick) {
       // R2 の実物を確かめる
       let why = "";
+      let badKey = "";
       if (c.discarded) {
         // 要らないと決めた録画：R2 と YouTube は確かめない
       } else if (!c.r2.length) why = "R2 のファイルの控えが無い";
@@ -172,13 +203,25 @@ export async function purgeZoom(
         if (why) break;
         const h = await env.STORE.head(f.key);
         if (!h) why = `R2 にファイルが無い（${f.key}）`;
-        else if (f.size > 0 && h.size !== f.size) why = `R2 の大きさが合わない（${f.key}）`;
+        else if (f.size > 0 && h.size !== f.size) {
+          why = `R2 の大きさが合わない（${f.key}）`;
+          badKey = f.key;
+        }
       }
       // YouTube の実物を確かめる（R2 だけで消してよい古い録画は見ない）
       if (!why && !c.r2Only && !c.discarded) {
         const st = c.youtube ? ready.get(c.youtube) : undefined;
         if (!c.youtube || st === undefined) why = "YouTube に動画が見つからない";
         else if (st !== "processed") why = `YouTube の取り込みが終わっていない（${st || "不明"}）`;
+      }
+      if (why && badKey && c.recopy) {
+        // 第22版：止めるだけだと、Zoom の 30 日の自動削除で R2 に正しい写しが無いまま消える。Zoom にあるうちに入れ直す
+        const next = await c.recopy(badKey);
+        if (next) {
+          await c.mark(null, null);
+          out(`  ${c.label}：R2 の大きさが合わないので、Zoom から入れ直す（${next}）`);
+          continue;
+        }
       }
       if (why) {
         await c.mark(null, `Zoom から消すのを止めた：${why}`);
