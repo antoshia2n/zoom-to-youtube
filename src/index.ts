@@ -1444,11 +1444,12 @@ async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<vo
   }
   // 第25版：管理シートの E タイトルを名前の正本にし、R2・YouTube・保管の記録をそろえる
   try {
-    const sheet = await manageRowsForNames(env, ws.token);
+    const sheet = await manageRowsForNames(env, ws.token, sid);
     if (sheet) {
       const named = await syncNames(
         env,
         sheet.rows,
+        sheet.shareById,
         sheet.write,
         async () => {
           const yt = await accessToken(env, "youtube");
