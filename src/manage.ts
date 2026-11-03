@@ -815,9 +815,21 @@ export async function manageStatus(env: ManageEnv, token: string, sourceSheetId:
 export async function manageRowsForNames(
   env: ManageEnv,
   token: string,
-): Promise<{ rows: { tab: string; rowNo: number; values: string[] }[]; write: (cells: { range: string; values: string[][] }[]) => Promise<void> } | null> {
+  sourceSheetId: string,
+): Promise<{
+  rows: { tab: string; rowNo: number; values: string[] }[];
+  shareById: Map<string, string>;
+  write: (cells: { range: string; values: string[][] }[]) => Promise<void>;
+} | null> {
   const config = await loadConfig(env);
   if (!config) return null;
+  // 処理ID（台帳の A 列）と録画の控え（job/ は Zoom の録画の番号で置く）は、台帳の共有リンク（B 列）で結ぶ
+  const shareById = new Map<string, string>();
+  for (const r of await readSourceRows(token, sourceSheetId)) {
+    const id = (r[0] ?? "").trim();
+    const share = (r[1] ?? "").trim();
+    if (id && share) shareById.set(id, share);
+  }
   const ranges = tabs().map((tab) => `ranges=${encodeURIComponent(`${tab}!A2:R500`)}`).join("&");
   const got = await googleJson<{ valueRanges?: { values?: string[][] }[] }>(
     token,
@@ -825,5 +837,5 @@ export async function manageRowsForNames(
   );
   const rows: { tab: string; rowNo: number; values: string[] }[] = [];
   tabs().forEach((tab, i) => (got.valueRanges?.[i]?.values ?? []).forEach((values, r) => rows.push({ tab, rowNo: r + 2, values })));
-  return { rows, write: (cells) => writeCells(token, config.id, cells) };
+  return { rows, shareById, write: (cells) => writeCells(token, config.id, cells) };
 }

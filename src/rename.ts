@@ -39,6 +39,7 @@ interface Mark {
 
 interface JobLike {
   recId: string;
+  share?: string;
   title?: string;
   date?: string;
   naming?: { title?: string; mode?: string; kai?: string };
@@ -55,8 +56,20 @@ function markKey(id: string): string {
   return MARK_PREFIX + id.replace(/[^A-Za-z0-9._-]/g, "_") + ".json";
 }
 
-function jobKey(id: string): string {
-  return "job/" + id.replace(/[^A-Za-z0-9._-]/g, "_") + ".json";
+/** 共有リンク → job/ の置き場。job/ は Zoom の録画の番号で置かれ、管理シートの処理ID とは別なので、台帳の共有リンクで結ぶ */
+async function jobIndex(store: R2Bucket): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  let cursor: string | undefined;
+  for (let g = 0; g < 50; g++) {
+    const page = await store.list({ prefix: "job/", cursor });
+    for (const o of page.objects) {
+      const j = await readJson<JobLike>(store, o.key);
+      if (j?.share) map.set(j.share.trim(), o.key);
+    }
+    if (!page.truncated) break;
+    cursor = page.cursor;
+  }
+  return map;
 }
 
 async function readJson<T>(store: R2Bucket, key: string): Promise<T | null> {
@@ -153,6 +166,7 @@ interface SheetRef {
 export async function syncNames(
   env: RenameEnv,
   rows: { tab: string; rowNo: number; values: string[] }[],
+  shareById: Map<string, string>,
   writeCells: (cells: { range: string; values: string[][] }[]) => Promise<void>,
   ytToken: () => Promise<string>,
   out: (s: string) => void,
@@ -172,12 +186,27 @@ export async function syncNames(
   }
   for (const tab of headerTabs) writes.push({ range: `${tab}!R1`, values: [[R_HEADER]] });
 
+  let jobs: Map<string, string> | null = null;
   for (const ref of refs) {
     res.seen++;
-    const job = await readJson<JobLike>(env.STORE, jobKey(ref.id));
-    if (!job) continue;
+    const mark = await readJson<Mark>(env.STORE, markKey(ref.id));
+    if (mark && mark.title === ref.title) {
+      // そろえ済み：控えは読まずに、R 列だけ埋める
+      if (mark.r2 && ref.rCell !== mark.r2 && !ref.rCell.startsWith("失敗")) writes.push({ range: `${ref.tab}!R${ref.rowNo}`, values: [[mark.r2]] });
+      continue;
+    }
+    const share = shareById.get(ref.id);
+    if (share) jobs ??= await jobIndex(env.STORE);
+    const jk = share ? jobs?.get(share) : undefined;
+    const job = jk ? await readJson<JobLike>(env.STORE, jk) : null;
+    if (!jk || !job) {
+      // 控えに結び付かない行（録画の無い予定の行など）：覚えるだけにして、毎回探し直さない
+      await env.STORE.put(markKey(ref.id), JSON.stringify({ title: ref.title, at: new Date().toISOString() } satisfies Mark));
+      res.baselined++;
+      continue;
+    }
     const ownR2 = !!(job.r2Key && job.r2Done && !job.r2DeletedAt);
-    const legacy = ownR2 ? null : await findLegacy(env, ref.id);
+    const legacy = ownR2 ? null : await findLegacy(env, job.recId);
 
     // R2 の置き場（主のファイルと、ほかのファイル）
     let mainKey = "";
@@ -191,17 +220,18 @@ export async function syncNames(
       mainKey = keys.find((k) => k.endsWith(".mp4")) ?? keys[0] ?? "";
     }
 
-    const mark = await readJson<Mark>(env.STORE, markKey(ref.id));
     if (!mark) {
-      // 初めて見た行：いまの E をそろえ済みとして覚えるだけ
-      await env.STORE.put(markKey(ref.id), JSON.stringify({ title: ref.title, at: new Date().toISOString(), r2: mainKey } satisfies Mark));
-      if (mainKey && ref.rCell !== mainKey) writes.push({ range: `${ref.tab}!R${ref.rowNo}`, values: [[mainKey]] });
-      res.baselined++;
-      continue;
-    }
-    if (mark.title === ref.title) {
-      if (mainKey && ref.rCell !== mainKey && !ref.rCell.startsWith("失敗")) writes.push({ range: `${ref.tab}!R${ref.rowNo}`, values: [[mainKey]] });
-      continue;
+      // 初めて見た行：いまの名前をそろえ済みとして覚えるだけ（前からある行を勝手に付け直さない）。
+      // ただし 11/03 以降に録った録画は、控えの題名（AI が付けた名前）を起点にし、E が違えばそろえる
+      // （第25版の初日に、名前を変える段が控えを引けずに空回りしていた間の書き直しを拾うため）
+      const recent = (job.date ?? "") >= "2026-11-03";
+      const start = recent ? (job.naming?.title ?? job.title ?? ref.title) : ref.title;
+      await env.STORE.put(markKey(ref.id), JSON.stringify({ title: start, at: new Date().toISOString(), r2: mainKey } satisfies Mark));
+      if (start === ref.title) {
+        if (mainKey && ref.rCell !== mainKey) writes.push({ range: `${ref.tab}!R${ref.rowNo}`, values: [[mainKey]] });
+        res.baselined++;
+        continue;
+      }
     }
     if (budget <= 0) continue;
     budget--;
@@ -242,14 +272,14 @@ export async function syncNames(
       job.title = ref.title;
       if (job.naming) job.naming.title = ref.title;
       job.updatedAt = new Date().toISOString();
-      await env.STORE.put(jobKey(ref.id), JSON.stringify(job));
+      await env.STORE.put(jk, JSON.stringify(job));
       if (legacy) await saveLegacyTitle(env, legacy, ref.title);
       for (const from of plan.keys()) await env.STORE.delete(from);
     } else {
       job.title = ref.title;
       if (job.naming) job.naming.title = ref.title;
       job.updatedAt = new Date().toISOString();
-      await env.STORE.put(jobKey(ref.id), JSON.stringify(job));
+      await env.STORE.put(jk, JSON.stringify(job));
       if (legacy) await saveLegacyTitle(env, legacy, ref.title);
     }
 
