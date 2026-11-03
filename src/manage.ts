@@ -810,3 +810,20 @@ export async function manageStatus(env: ManageEnv, token: string, sourceSheetId:
     `まだ入っていない処理IDの数：${targetIds.size - present}`,
   ].join("\n");
 }
+
+/** 第25版：名前をそろえる段（rename.ts）のために、管理シートの全部のタブの行（A〜R）を読む・書く口 */
+export async function manageRowsForNames(
+  env: ManageEnv,
+  token: string,
+): Promise<{ rows: { tab: string; rowNo: number; values: string[] }[]; write: (cells: { range: string; values: string[][] }[]) => Promise<void> } | null> {
+  const config = await loadConfig(env);
+  if (!config) return null;
+  const ranges = tabs().map((tab) => `ranges=${encodeURIComponent(`${tab}!A2:R500`)}`).join("&");
+  const got = await googleJson<{ valueRanges?: { values?: string[][] }[] }>(
+    token,
+    `https://sheets.googleapis.com/v4/spreadsheets/${config.id}/values:batchGet?majorDimension=ROWS&${ranges}`,
+  );
+  const rows: { tab: string; rowNo: number; values: string[] }[] = [];
+  tabs().forEach((tab, i) => (got.valueRanges?.[i]?.values ?? []).forEach((values, r) => rows.push({ tab, rowNo: r + 2, values })));
+  return { rows, write: (cells) => writeCells(token, config.id, cells) };
+}
