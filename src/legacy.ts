@@ -57,6 +57,13 @@ export interface LegacyFile {
   r2Done?: boolean;
   /** 第21版：途中から読む頼みでメモリの上限に当たったファイルは、次から流しながら入れる */
   forceStream?: boolean;
+  /** 第24版：文字のファイルで、Zoom の一覧の大きさが届いた中身と違ったときの一覧の値（size は届いた方に直す） */
+  listSize?: number;
+}
+
+/** 動画・音声ではないファイル（チャット・字幕・文字起こしなど）。大きさの食い違いを許すのはこれだけ */
+function textLike(f: LegacyFile): boolean {
+  return f.type !== "MP4" && f.type !== "M4A";
 }
 
 export interface LegacyRec {
@@ -385,7 +392,10 @@ async function streamZoomToR2(
     if (!loc) throw new Error("Zoom のダウンロードの飛び先がありません");
     res = await fetch(new URL(loc, f.url).toString());
   }
-  if (!res.ok || !res.body) throw new Error(`Zoom がファイルを返しません（${res.status}）`);
+  if (!res.ok || !res.body) throw new Error(`Zoom がファイルを返しません（${f.type}・${res.status}）`);
+  // 第24版：返りの content-length（圧縮されていないときだけ）を控え、読み切った大きさと突き合わせる
+  const cl = res.headers.get("content-encoding") ? null : res.headers.get("content-length");
+  const served = cl && /^\d+$/.test(cl) ? Number(cl) : null;
   const key = f.r2Key as string;
   const upload = await env.STORE.createMultipartUpload(key, { httpMetadata: { contentType: f.type === "MP4" ? "video/mp4" : "application/octet-stream" } });
   const parts: R2UploadedPart[] = [];
@@ -432,8 +442,16 @@ async function streamZoomToR2(
     throw e;
   }
   const head = await env.STORE.head(key);
+  if (head && f.size > 0 && head.size !== f.size && textLike(f) && head.size === total && (served === null || served === total)) {
+    // 第24版（2026-11-03）：チャット・字幕などの文字のファイルは、Zoom の一覧の大きさと実際に返す中身の大きさが違う
+    // （11/03 朝に 140 回分、どれも一覧より 3〜5% 小さく、入れ直しても同じ大きさ）。流れが最後まで届き、
+    // 返りの content-length とも合っていれば、届いた中身を正として控えの大きさを直す。動画と音声は今までどおり厳しく見る
+    out(`      ${f.type}：Zoom の一覧は ${f.size} バイト、届いた中身は ${head.size} バイト。届いた方を正とします`);
+    f.listSize = f.size;
+    f.size = head.size;
+  }
   if (!head || (f.size > 0 && head.size !== f.size)) {
-    throw new Error(`R2 の大きさが Zoom と合いません（R2 ${head?.size ?? "無し"}・Zoom ${f.size}・読んだ ${total}）`);
+    throw new Error(`R2 の大きさが Zoom と合いません（${f.type}・R2 ${head?.size ?? "無し"}・Zoom ${f.size}・読んだ ${total}・返りの長さ ${served ?? "無し"}）`);
   }
   if (f.size <= 0) f.size = head.size;
   f.r2Done = true;
