@@ -1,5 +1,12 @@
 /**
- * zoom-to-youtube / 第24版（2026-11-03 開発部・文字のファイルの大きさの食い違いを、届いた中身で正す）
+ * zoom-to-youtube / 第25版（2026-11-03 開発部・管理シートの E タイトルで R2・YouTube の名前をそろえる）
+ *
+ * 第25版で足したこと（Naoki OK 2026-11-03 22:48）
+ *   管理シートの E タイトルを録画の名前の正本にする（rename.ts）。書き直すと次の実行で、R2 のファイル名（写して確かめてから
+ *   古い方を消す）・YouTube の題名・保管の記録の題名をそろえ、R 列「R2（自動）」に置き場を書く。初めて見た行は覚えるだけ。
+ *   YouTube の題名を変えるために、youtube の許可へ youtube.force-ssl を足した（/oauth/start で通し直すまでは YouTube だけ飛ばす）
+ *
+ * 第24版（2026-11-03 開発部・文字のファイルの大きさの食い違いを、届いた中身で正す）
  *
  * 第24版で直したこと（2026-11-03 開発部）
  *   古い録画のチャット・字幕などの文字のファイルで、Zoom の一覧の大きさと実際に届く中身が 3〜5% 違い、
@@ -83,7 +90,8 @@
  */
 
 import { handleTensakuCommit, handleTensakuNotify } from "./tensaku";
-import { manageStatus, reapplyFormats, syncContentOs, syncManabu, syncManageSheet } from "./manage";
+import { manageRowsForNames, manageStatus, reapplyFormats, syncContentOs, syncManabu, syncManageSheet } from "./manage";
+import { syncNames } from "./rename";
 import {
   AUTO_FROM,
   decideR2Key,
@@ -175,6 +183,8 @@ const PERMITS = {
     scopes: [
       "https://www.googleapis.com/auth/youtube.upload",
       "https://www.googleapis.com/auth/youtube.readonly",
+      // 第25版：管理シートの題名に合わせて YouTube の題名を書き換えるため
+      "https://www.googleapis.com/auth/youtube.force-ssl",
     ].join(" "),
   },
   workspace: {
@@ -1429,6 +1439,30 @@ async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<vo
     if (managed.noSpace > 0) failures.push(`管理シートに空きが無くて入れられなかった：${managed.noSpace} 件`);
   } catch (e) {
     const why = `管理シートへの反映に失敗：${e instanceof Error ? e.message : String(e)}`;
+    out(why);
+    failures.push(why.slice(0, 300));
+  }
+  // 第25版：管理シートの E タイトルを名前の正本にし、R2・YouTube・保管の記録をそろえる
+  try {
+    const sheet = await manageRowsForNames(env, ws.token);
+    if (sheet) {
+      const named = await syncNames(
+        env,
+        sheet.rows,
+        sheet.write,
+        async () => {
+          const yt = await accessToken(env, "youtube");
+          if (!yt.ok) throw new Error(yt.why);
+          return yt.token;
+        },
+        out,
+      );
+      out(`名前：見た ${named.seen} 件／そろえた ${named.renamed} 件／初めて覚えた ${named.baselined} 件／失敗 ${named.failed} 件`);
+      notes.push(...named.notes);
+      failures.push(...named.failures);
+    }
+  } catch (e) {
+    const why = `名前をそろえる段で失敗：${e instanceof Error ? e.message : String(e)}`;
     out(why);
     failures.push(why.slice(0, 300));
   }
