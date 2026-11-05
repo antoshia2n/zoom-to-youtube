@@ -18,11 +18,19 @@ const MANAGE_HEADERS = [
   "処理ID（自動）",
   "学ぶくん（自動）",
   "学ぶくんに入れる",
+  // 第25版：R2 の置き場（rename.ts が書く）
+  "R2（自動）",
+  // 第26版（2026-11-05）：YouTube は選んだものだけ。人に渡すのは自前の共有リンク（share.ts）
+  "YouTube に上げる",
+  "共有リンク（自動）",
+  "共有を止める",
+  "共有の期限",
+  "開かれた数（自動）",
 ] as const;
 const STATUS_VALUES = ["下書き", "レビュー待ち", "日時未定", "予約済み", "公開済"];
 const PLATFORM_VALUES = ["X記事", "Xポスト", "note記事", "セミナー", "有料教材", "YouTube"];
-/** 機械が書く列（B・G・H・I・K・L・N・O・P）。0 始まりの列番号 */
-const MACHINE_COLUMNS = [1, 6, 7, 8, 10, 11, 13, 14, 15];
+/** 機械が書く列（B・G・H・I・K・L・N・O・P・R・T・W）。0 始まりの列番号 */
+const MACHINE_COLUMNS = [1, 6, 7, 8, 10, 11, 13, 14, 15, 17, 19, 22];
 const PROTECT_NOTE = "機械の列（第17版）";
 /**
  * 第17版：録画の行へ A 投稿予定日・C 媒体・E タイトル を写す。
@@ -205,7 +213,15 @@ async function setUpTabs(token: string, id: string, properties: SheetProperties[
         },
       },
     );
-    for (const column of [9, 10, 16]) {
+    // 第26版：V 共有の期限は日付の形に
+    requests.push({
+      repeatCell: {
+        range: { sheetId, startRowIndex: 1, endRowIndex: 500, startColumnIndex: 21, endColumnIndex: 22 },
+        cell: { userEnteredFormat: { numberFormat: { type: "DATE", pattern: "yyyy-mm-dd" } } },
+        fields: "userEnteredFormat.numberFormat",
+      },
+    });
+    for (const column of [9, 10, 16, 18, 20]) {
       requests.push({
         setDataValidation: {
           range: { sheetId, startRowIndex: 1, endRowIndex: 500, startColumnIndex: column, endColumnIndex: column + 1 },
@@ -245,7 +261,7 @@ async function setUpTabs(token: string, id: string, properties: SheetProperties[
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       valueInputOption: "RAW",
-      data: tabs().map((tab) => ({ range: `${tab}!A1:Q1`, values: [[...MANAGE_HEADERS]] })),
+      data: tabs().map((tab) => ({ range: `${tab}!A1:W1`, values: [[...MANAGE_HEADERS]] })),
     }),
   });
 }
@@ -830,7 +846,7 @@ export async function manageRowsForNames(
     const share = (r[1] ?? "").trim();
     if (id && share) shareById.set(id, share);
   }
-  const ranges = tabs().map((tab) => `ranges=${encodeURIComponent(`${tab}!A2:R500`)}`).join("&");
+  const ranges = tabs().map((tab) => `ranges=${encodeURIComponent(`${tab}!A2:W500`)}`).join("&");
   const got = await googleJson<{ valueRanges?: { values?: string[][] }[] }>(
     token,
     `https://sheets.googleapis.com/v4/spreadsheets/${config.id}/values:batchGet?majorDimension=ROWS&${ranges}`,

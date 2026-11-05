@@ -44,6 +44,8 @@ interface JobLike {
   r2Done?: boolean;
   size?: number;
   youtubeUrl?: string;
+  /** 第26版：ドライブへの写しが終わったか */
+  driveDone?: boolean;
   zoomDeletedAt?: string;
   r2DeletedAt?: string;
   lastError?: string;
@@ -111,7 +113,12 @@ export async function purgeZoom(
         const j = JSON.parse(await got.text()) as JobLike;
         if (!j.meetingUuid || j.zoomDeletedAt) continue;
         const discarded = !!j.r2DeletedAt;
-        if (!discarded && (!j.r2Done || !j.youtubeUrl || !j.r2Key || !j.size)) {
+        /**
+         * 第26版（2026-11-05）：YouTube へは選んだ録画だけ上げるので、原本 R2＋写しドライブの 2 か所でも消してよい。
+         * 「原本が 2 か所にそろうまで消さない」は守る（YouTube かドライブのどちらか＋R2）。
+         */
+        const second = !!j.youtubeUrl || !!j.driveDone;
+        if (!discarded && (!j.r2Done || !second || !j.r2Key || !j.size)) {
           res.waiting++;
           continue;
         }
@@ -120,7 +127,7 @@ export async function purgeZoom(
           uuid: j.meetingUuid,
           youtube: videoId(j.youtubeUrl),
           r2: j.r2Key ? [{ key: j.r2Key, size: j.size ?? 0 }] : [],
-          r2Only: false,
+          r2Only: !j.youtubeUrl,
           discarded,
           mark: async (at, err) => {
             if (at) j.zoomDeletedAt = at;
