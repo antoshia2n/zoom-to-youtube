@@ -442,16 +442,42 @@ interface ZoomInfo {
   durationSec: number;
 }
 
+/**
+ * 共有ページから、share-info に渡す番号を取る。
+ * 古いページは HTML に meetingId: '...' を持つ。
+ * 2026-11 から Zoom の共有ページが新しい再生画面（fe-unified-player）に替わり、
+ * HTML には playInfoApi の住所だけが載る。そこを読むと result.mediaInfo.mediaId が返り、
+ * それを share-info に渡せば先は今までどおり動く（2026-11-05 実測）。
+ */
+async function readShareId(jar: Jar, share: string, html: string): Promise<string> {
+  const old = html.match(/meetingId:\s*'([^']+)'/);
+  if (old) return old[1];
+
+  const api = html.match(/playInfoApi:\s*"([^"]+)"/);
+  if (!api) throw new Error("Zoom の共有リンクが無効か、期限切れです（共有ページに録画の番号が見つかりません）");
+  const path = api[1].replace(/\\\//g, "/");
+  const r = await go(jar, new URL(path, ZOOM_BASE).toString(), share, "application/json");
+  const j = (await r.res.json()) as {
+    status?: boolean;
+    errorMessage?: string;
+    result?: { mediaInfo?: { mediaId?: string } };
+  };
+  const id = j.result?.mediaInfo?.mediaId;
+  if (!j.status || !id) {
+    throw new Error(`Zoom の共有リンクが無効か、期限切れです（新しい共有ページ：${j.errorMessage ?? "録画の番号が返りません"}）`);
+  }
+  return id;
+}
+
 async function readZoom(share: string): Promise<ZoomInfo> {
   const jar = new Jar();
 
   const a = await go(jar, share);
   if (a.res.status !== 200) throw new Error(`Zoom の共有ページが ${a.res.status} を返しました`);
   const html = await a.res.text();
-  const m = html.match(/meetingId:\s*'([^']+)'/);
-  if (!m) throw new Error("Zoom の共有リンクが無効か、期限切れです（meetingId が見つかりません）");
+  const shareId = await readShareId(jar, share, html);
 
-  const s = await go(jar, `${ZOOM_BASE}/nws/recording/1.0/play/share-info/${m[1]}`, share, "application/json");
+  const s = await go(jar, `${ZOOM_BASE}/nws/recording/1.0/play/share-info/${shareId}`, share, "application/json");
   const sj = (await s.res.json()) as { status?: boolean; errorMessage?: string; result?: { redirectUrl?: string } };
   if (!sj.status || !sj.result?.redirectUrl) throw new Error(`Zoom が録画の場所を返しません：${sj.errorMessage ?? "理由なし"}`);
 
