@@ -105,6 +105,7 @@ import {
 } from "./archive";
 import { legacyRows, mainVideo, migrateLegacy } from "./legacy";
 import { purgeZoom } from "./purge";
+import { handleShare, syncShares, type YoutubeCandidate } from "./share";
 
 export { ArchiveApi } from "./api";
 
@@ -786,9 +787,34 @@ async function openSession(token: string, url: string, meta: unknown, size: numb
   return loc;
 }
 
-/** Zoom から 8 MB ずつ読んで、開いた受け口へ渡す */
+/** 動画の一部（start〜end のバイト）を読む。Zoom からでも R2 からでもよい */
+type ReadPart = (start: number, end: number) => Promise<ArrayBuffer>;
+
+/** Zoom の動画を読む口 */
+function zoomReader(z: ZoomInfo): ReadPart {
+  return async (start, end) => {
+    const part = await fetch(z.mp4Url, {
+      headers: { ...zHeaders(z.jar, z.playUrl), Range: `bytes=${start}-${end}` },
+    });
+    if (part.status !== 206 && part.status !== 200) {
+      throw new Error(`Zoom が動画の一部を返しません（${part.status}）`);
+    }
+    return part.arrayBuffer();
+  };
+}
+
+/** 第26版：R2 の原本を読む口（YouTube へあとから上げるとき。Zoom からはもう消えていることがあるため） */
+function r2Reader(env: Env, key: string): ReadPart {
+  return async (start, end) => {
+    const o = await env.STORE.get(key, { range: { offset: start, length: end - start + 1 } });
+    if (!o) throw new Error(`R2 に原本がありません（${key}）`);
+    return o.arrayBuffer();
+  };
+}
+
+/** 8 MB ずつ読んで、開いた受け口へ渡す */
 async function relay(
-  z: ZoomInfo,
+  read: ReadPart,
   size: number,
   session: string,
   token: string,
@@ -802,13 +828,7 @@ async function relay(
   while (sent < size) {
     const end = Math.min(sent + CHUNK, size) - 1;
 
-    const part = await fetch(z.mp4Url, {
-      headers: { ...zHeaders(z.jar, z.playUrl), Range: `bytes=${sent}-${end}` },
-    });
-    if (part.status !== 206 && part.status !== 200) {
-      throw new Error(`Zoom が動画の一部を返しません（${part.status}）`);
-    }
-    const buf = await part.arrayBuffer();
+    const buf = await read(sent, end);
 
     const put = await gFetch(token, session, {
       method: "PUT",
@@ -869,7 +889,7 @@ async function askSession(token: string, session: string, size: number): Promise
 
 /** 動画を1か所へ送る。受け口があれば続きから、無ければ開いてから */
 async function sendVideo(
-  z: ZoomInfo,
+  read: ReadPart,
   size: number,
   token: string,
   open: () => Promise<string>,
@@ -903,13 +923,13 @@ async function sendVideo(
   }
 
   try {
-    return await relay(z, size, session, token, from, out, beat);
+    return await relay(read, size, session, token, from, out, beat);
   } catch (e) {
     if (!(e instanceof SessionGone)) throw e;
     out("      受け口が途中で使えなくなったので、開き直して最初から送ります");
     const fresh = await open();
     await remember(fresh);
-    return await relay(z, size, fresh, token, 0, out, beat);
+    return await relay(read, size, fresh, token, 0, out, beat);
   }
 }
 
@@ -1082,9 +1102,9 @@ async function processRow(
     // 同じ録画がすでに上がっていないか
     let job = await loadJob(env, z.recId);
     jobRef = job;
-    if (job?.youtubeUrl && job.rowNo !== rowNo) {
+    if (job && (job.youtubeUrl || (job.r2Done && job.driveDone)) && job.rowNo !== rowNo) {
       row[COL.drive] = job.driveFolderUrl ?? "";
-      row[COL.youtube] = job.youtubeUrl;
+      row[COL.youtube] = job.youtubeUrl ?? "";
       await set("完了", `同じ録画が ${job.rowNo} 行目ですでに上がっています。上げ直していません`);
       out(`  同じ録画が ${job.rowNo} 行目で上がっているので、上げ直しませんでした`);
       return;
@@ -1219,7 +1239,7 @@ async function processRow(
     } else {
       out("  動画をドライブへ");
       await sendVideo(
-        z,
+        zoomReader(z),
         size,
         wsToken,
         () =>
@@ -1243,64 +1263,26 @@ async function processRow(
     }
     await set("Drive保存済み");
 
-    // 動画を YouTube へ
+    /**
+     * 第26版（2026-11-05）：YouTube へは自動で上げない。
+     * 11/05 の録画（UTAGE の画面の操作）が、写っていた個人の情報で YouTube に消された（初めての違反＝警告）。
+     * 次はストライクになるので、上げるのは管理シートで「YouTube に上げる」か「学ぶくんに入れる」に
+     * チェックした録画だけにした（uploadChosenToYoutube）。人に渡すのは自前の共有リンク（share.ts）。
+     * 原本は R2、写しはドライブにある。
+     */
     if (j.youtubeUrl) {
+      row[COL.youtube] = j.youtubeUrl;
       out("  YouTube には上げ済みです");
     } else {
-      out("  動画を YouTube へ（限定公開で依頼）");
-      await set("YouTube投稿中");
-      const yt = await accessToken(env, "youtube");
-      if (!yt.ok) throw new Error(yt.why);
-
-      const video = (await sendVideo(
-        z,
-        size,
-        yt.token,
-        () =>
-          openSession(
-            yt.token,
-            "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
-            {
-              // 第18版：タイトルは台帳の題名（空の行は AI が付けた名前）、概要欄は AI の要約と目次
-              snippet: { title: (row[COL.title] || naming.title || "無題").slice(0, 100), description: naming.description },
-              /**
-               * 2026-08-20：この チャンネル では、上げたあと手で 限定公開 に変えても
-               * 非公開に戻されないことを実物で確認した（固定は掛かっていない）。
-               * そこで最初から 限定公開 で頼む。
-               */
-              status: { privacyStatus: "unlisted", selfDeclaredMadeForKids: false },
-            },
-            size,
-            "video/mp4",
-          ),
-        j.ytSession,
-        async (session) => {
-          j.ytSession = session;
-          await saveJob(env, j);
-        },
-        out,
-        beat,
-      )) as { id?: string; status?: { privacyStatus?: string } };
-
-      if (!video.id) throw new Error("YouTube が動画の番号を返しません");
-      j.youtubeId = video.id;
-      j.youtubeUrl = `https://www.youtube.com/watch?v=${video.id}`;
-      j.privacy = video.status?.privacyStatus ?? "不明";
-      await saveJob(env, j);
+      out("  YouTube には上げない（管理シートで選んだものだけ上げる）");
     }
-
-    row[COL.youtube] = j.youtubeUrl as string;
-    const privacy = j.privacy ?? "不明";
-    const jp = privacy === "unlisted" ? "限定公開" : privacy === "private" ? "非公開" : privacy;
-    out(`  YouTube 側の公開設定：${jp}`);
 
     if (j.lastError) {
       j.lastError = undefined;
       await saveJob(env, j);
     }
-    // 限定公開で頼んだのに非公開になった場合は、Naoki が手で直せるように印を残す
-    await set("完了", jp === "限定公開" ? "" : `YouTube 側で ${jp} になりました。手で 限定公開 に変えてください`);
-    out(`  完了：${row[COL.youtube]}`);
+    await set("完了", "");
+    out("  完了：原本は R2・写しはドライブ");
   } catch (e) {
     const why = e instanceof Error ? e.message : String(e);
     out(`  エラー：${why}`);
@@ -1396,6 +1378,79 @@ async function notifyRun(
   }
 }
 
+/**
+ * 第26版：管理シートで「YouTube に上げる」か「学ぶくんに入れる」にチェックした録画だけを、R2 の原本から YouTube へ上げる。
+ * Zoom からは消えていることがあるので、読むのは R2。途中で時間切れになっても受け口を控えに残し、次の回が続きから送る。
+ * 上げ終えたら受付の F 列に住所を書く（管理シートの H 列へは次の回で写り、学ぶくんはそのあとで入る）。
+ */
+async function uploadChosenToYoutube(
+  env: Env,
+  wsToken: string,
+  sid: string,
+  candidates: YoutubeCandidate[],
+  started: number,
+  out: (s: string) => void,
+  beat: () => Promise<void>,
+): Promise<{ notes: string[]; failures: string[] }> {
+  const res = { notes: [] as string[], failures: [] as string[] };
+  for (const c of candidates) {
+    if (Date.now() - started > RUN_BUDGET_MS - 4 * 60000) {
+      out("  YouTube へ上げる残りは次の回へ");
+      break;
+    }
+    const o = await env.STORE.get(c.jobKey);
+    if (!o) continue;
+    const j = JSON.parse(await o.text()) as Job;
+    if (j.youtubeUrl || !j.r2Key || !j.size) continue;
+    try {
+      out(`  YouTube へ（選んだ録画・R2 から）：${c.title}`);
+      const yt = await accessToken(env, "youtube");
+      if (!yt.ok) throw new Error(yt.why);
+      const video = (await sendVideo(
+        r2Reader(env, j.r2Key),
+        j.size,
+        yt.token,
+        () =>
+          openSession(
+            yt.token,
+            "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
+            {
+              snippet: { title: c.title.slice(0, 100), description: j.naming?.description ?? "" },
+              status: { privacyStatus: "unlisted", selfDeclaredMadeForKids: false },
+            },
+            j.size,
+            "video/mp4",
+          ),
+        j.ytSession,
+        async (session) => {
+          j.ytSession = session;
+          await saveJob(env, j);
+        },
+        out,
+        beat,
+      )) as { id?: string; status?: { privacyStatus?: string } };
+      if (!video.id) throw new Error("YouTube が動画の番号を返しません");
+      j.youtubeId = video.id;
+      j.youtubeUrl = `https://www.youtube.com/watch?v=${video.id}`;
+      j.privacy = video.status?.privacyStatus ?? "不明";
+      await saveJob(env, j);
+      if (j.rowNo) {
+        await gJson(
+          wsToken,
+          `https://sheets.googleapis.com/v4/spreadsheets/${sid}/values/${encodeURIComponent(`受付!F${j.rowNo}`)}?valueInputOption=RAW`,
+          { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ values: [[j.youtubeUrl]] }) },
+        );
+      }
+      res.notes.push(`YouTube に上げた（選んだ録画）：${c.title}　${j.youtubeUrl}`);
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      out(`  YouTube へ上げられなかった：${why}`);
+      res.failures.push(`YouTube へ上げられなかった：${c.title}（${c.label}）：${why.slice(0, 200)}`);
+    }
+  }
+  return res;
+}
+
 async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<void>): Promise<void> {
   const started = Date.now();
 
@@ -1447,7 +1502,7 @@ async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<vo
     const name = (t.row[COL.title] ?? "").trim() || `${t.no}行目`;
     const state = (t.row[COL.state] ?? "").trim();
     if (state === "完了") {
-      notes.push(`YouTube に上がった：${name}（収録日 ${t.row[COL.date] ?? ""}）${t.row[COL.youtube] ?? ""}`);
+      notes.push(`保管した：${name}（収録日 ${t.row[COL.date] ?? ""}）。共有リンクは次の回で管理シートに入ります`);
     } else if (state === "エラー") {
       failures.push(`録画を運べなかった：${name}：${(t.row[COL.error] ?? "").slice(0, 300)}`);
     }
@@ -1487,6 +1542,21 @@ async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<vo
       out(`名前：見た ${named.seen} 件／そろえた ${named.renamed} 件／初めて覚えた ${named.baselined} 件／失敗 ${named.failed} 件`);
       notes.push(...named.notes);
       failures.push(...named.failures);
+
+      // 第26版：自前の共有リンクと、YouTube へ上げると選んだ録画
+      try {
+        const sh = await syncShares(env, sheet.rows, sheet.shareById, sheet.write);
+        out(`共有リンク：作った ${sh.created} 件／止める・期限を写した ${sh.updated} 件／YouTube へ上げる候補 ${sh.candidates.length} 件`);
+        notes.push(...sh.notes);
+        failures.push(...sh.failures);
+        const up = await uploadChosenToYoutube(env, ws.token, sid, sh.candidates, started, out, beat);
+        notes.push(...up.notes);
+        failures.push(...up.failures);
+      } catch (e) {
+        const why = `共有リンクの段で失敗：${e instanceof Error ? e.message : String(e)}`;
+        out(why);
+        failures.push(why.slice(0, 300));
+      }
     }
   } catch (e) {
     const why = `名前をそろえる段で失敗：${e instanceof Error ? e.message : String(e)}`;
@@ -2029,6 +2099,11 @@ const TERMS_TEXT = [
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    // 第26版：自前の共有リンク（/v/<番号>）
+    if (url.pathname.startsWith("/v/")) {
+      return (await handleShare(request, env)) ?? text("見つかりません", 404);
+    }
 
     switch (url.pathname) {
       case "/":
