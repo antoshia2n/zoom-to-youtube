@@ -30,6 +30,7 @@ import {
   type ShareRec,
 } from "./share";
 import { parseDescription, playerHtml } from "./player";
+import { listUploads } from "./upload";
 
 export const KAIS = ["セミナー", "打ち合わせ", "個別相談", "Zoom添削", "その他"] as const;
 type Kai = (typeof KAIS)[number];
@@ -80,7 +81,8 @@ interface Sug {
 
 export interface ShelfRow {
   id: string;
-  kind: "new" | "legacy";
+  /** 第32版：upload＝手で上げた動画・音声（便 C） */
+  kind: "new" | "legacy" | "upload";
   date: string;
   title: string;
   kai: string;
@@ -172,7 +174,7 @@ function shareView(rec: ShareRec | null, shortOk: boolean): ShelfRow["share"] {
 
 interface Item {
   id: string;
-  kind: "new" | "legacy";
+  kind: "new" | "legacy" | "upload";
   date: string;
   baseTitle: string;
   baseKai: string;
@@ -251,7 +253,36 @@ async function buildItems(env: ArchiveEnv): Promise<Item[]> {
       playable: !!mainVideo(r.files)?.r2Key,
     });
   }
+  // 第32版（便 C）：手で上げた動画・音声。入れ終わったものだけ
+  for (const u of await listUploads(env.STORE)) {
+    if (u.state !== "done") continue;
+    out.push({
+      id: u.id,
+      kind: "upload",
+      date: u.date,
+      baseTitle: u.title,
+      baseKai: u.kai || "その他",
+      managed: false,
+      minutes: null,
+      sizeGb: Math.round((u.size / 1073741824) * 100) / 100,
+      youtube: false,
+      shareIndex: uKey(u.id),
+      playable: true,
+    });
+  }
   return out;
+}
+
+/** 第32版：手で上げた録画の共有の控え（新しい録画は share/j/、古い録画は share/l/） */
+const uKey = (id: string) => `share/u/${id.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+
+/** 共有の控え・見る画面に渡す「どの録画か」 */
+function recRef(it: Item): Pick<ShareRec, "jobKey" | "legacyId" | "uploadId"> {
+  return {
+    jobKey: it.kind === "new" ? jobKeyOf(it.id) : "",
+    ...(it.kind === "legacy" ? { legacyId: it.id } : {}),
+    ...(it.kind === "upload" ? { uploadId: it.id } : {}),
+  };
 }
 
 async function listKeys(store: R2Bucket, prefix: string): Promise<Set<string>> {
@@ -285,7 +316,7 @@ export async function shelfList(env: ArchiveEnv): Promise<{ ok: true; total: num
   const shortOk = await shortHostOk(env.STORE);
   const rows: ShelfRow[] = [];
   // 共有の控えは数十件なので 1 件ずつ引く（並べて引く）
-  const have = new Set([...(await listKeys(env.STORE, "share/j/")), ...(await listKeys(env.STORE, "share/l/"))]);
+  const have = new Set([...(await listKeys(env.STORE, "share/j/")), ...(await listKeys(env.STORE, "share/l/")), ...(await listKeys(env.STORE, "share/u/"))]);
   const shares = await Promise.all(all.map((it) => shareOf(env, it, have)));
   all.forEach((it, i) => {
     const meta = metas.get(metaKey(it.id));
@@ -298,7 +329,8 @@ export async function shelfList(env: ArchiveEnv): Promise<{ ok: true; total: num
       const [, mm, dd] = it.date.split("-").map(Number);
       if (md !== `${mm}-${dd}`) issues.push("名前の日付と収録日が合わない");
     }
-    if ((it.sizeGb !== null && it.sizeGb < 0.01) || (it.minutes !== null && it.minutes < 1)) issues.push(ISSUE_EMPTY);
+    // 手で上げたものは短い動画もあるので「ほぼ空」の点検に入れない
+    if (it.kind !== "upload" && ((it.sizeGb !== null && it.sizeGb < 0.01) || (it.minutes !== null && it.minutes < 1))) issues.push(ISSUE_EMPTY);
     if (!it.playable) issues.push("見る画面で流せる動画が無い（音声だけなど）");
     rows.push({
       id: it.id,
@@ -363,8 +395,7 @@ export async function shareIssue(env: ArchiveEnv, id: string): Promise<object> {
   const token = newToken();
   const rec: ShareRec = {
     token,
-    jobKey: it.kind === "new" ? jobKeyOf(it.id) : "",
-    ...(it.kind === "legacy" ? { legacyId: it.id } : {}),
+    ...recRef(it),
     title: (!it.managed && metas?.title) || it.baseTitle || "録画",
     createdAt: new Date().toISOString(),
     views: 0,
@@ -458,6 +489,7 @@ const SUG_MODEL = "@cf/openai/gpt-oss-120b"; // 名前付け（archive.ts）と�
 
 async function transcriptOf(env: ArchiveEnv, it: Item): Promise<string | null> {
   let key: string | null = null;
+  if (it.kind === "upload") return null; // 手で上げたものは文字起こしが無い（便 C）
   if (it.kind === "legacy") {
     const r = await readJson<LegacyRec>(env.STORE, recKey(it.id));
     key = r?.files.find((f) => f.type === "TRANSCRIPT" && f.r2Key)?.r2Key ?? null;
@@ -578,7 +610,7 @@ export async function labelsEdit(env: ArchiveEnv, opts: { action: "rename" | "de
 async function memberMedia(env: ArchiveEnv, id: string) {
   const it = await findItem(env, String(id ?? ""));
   if (!it || !it.playable) return null;
-  const rec = { jobKey: it.kind === "new" ? jobKeyOf(it.id) : "", ...(it.kind === "legacy" ? { legacyId: it.id } : {}) } as ShareRec;
+  const rec = recRef(it) as ShareRec;
   const media = await mediaFor(env, rec);
   if (!media) return null;
   const metas = await readJson<Meta>(env.STORE, metaKey(it.id));
@@ -616,7 +648,9 @@ export async function memberData(env: ArchiveEnv, id: string): Promise<object> {
 /** 第31版：置き場を指して流す（棚の一覧を読まない）。mp4 だけ */
 export async function memberStream(env: ArchiveEnv, key: string, range?: string | null, method?: string): Promise<Response> {
   const k = String(key ?? "");
-  if (!/\.mp4$/i.test(k) || k.includes("..") || k.startsWith("/") || k.startsWith("share/") || k.startsWith("shelf/") || k.startsWith("config/")) return new Response("", { status: 404 });
+  // 第32版：手で上げたもの（upload/files/）は mp4 以外の動画・音声もある
+  const okExt = /\.mp4$/i.test(k) || (k.startsWith("upload/files/") && /\.(m4v|mov|webm|m4a|mp3|wav)$/i.test(k));
+  if (!okExt || k.includes("..") || k.startsWith("/") || k.startsWith("share/") || k.startsWith("shelf/") || k.startsWith("config/")) return new Response("", { status: 404 });
   const headers: Record<string, string> = {};
   if (range) headers.range = String(range);
   return streamVideo(new Request("https://member.local/video", { method: method === "HEAD" ? "HEAD" : "GET", headers }), env, k);

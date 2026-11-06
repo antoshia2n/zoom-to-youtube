@@ -12,6 +12,8 @@
  *   meta_set     名前と会の種類（まとめて）
  *   suggest_kai  「その他」の録画に会の種類の案を AI で付ける（少しずつ。5 分ごとの処理も 6 本ずつ出す）
  *   labels_edit  ラベルの名前を変える・削除（便 A）
+ *   第32版（便 C 手で上げる・2026-11-06 Naoki OK 19:47）
+ *   upload_start・upload_part・upload_complete・upload_abort  動画・音声を 16MB ずつ R2 へ入れ、棚に「アップロード」で並べる（src/upload.ts）
  *
  * 決め（2026-11-02 Naoki OK の便 4）
  *   ・消すかどうかは毎回 Naoki が決める。自動で消す仕組みは作らない
@@ -22,7 +24,8 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { buildArchiveList, readSheetFailures, type ArchiveEnv, type ArchiveListResult, type ArchiveRow } from "./archive";
 import { recKey, type LegacyRec } from "./legacy";
-import { labelsEdit, memberData, memberInfo, memberPage, memberStream, memberVideo, metaSet, shareIssue, shareSet, shelfList, suggestKai } from "./shelf";
+import { labelsEdit, memberData, memberInfo, memberPage, memberStream, memberVideo, metaSet, refreshShelfItems, shareIssue, shareSet, shelfList, suggestKai } from "./shelf";
+import { uploadAbort, uploadComplete, uploadPart, uploadStart } from "./upload";
 
 export interface SearchQuery {
   date_from?: string;
@@ -200,6 +203,30 @@ export class ArchiveApi extends WorkerEntrypoint<ArchiveEnv> {
     return memberVideo(this.env, id, range, method);
   }
 
+  /** 第32版（便 C）：手で上げる。マーケくんがログインを確かめてから呼ぶ */
+  async upload_start(b: { file_name?: string; size?: number; date?: string; title?: string; kai?: string; labels?: string[]; by?: string }): Promise<object> {
+    return uploadStart(this.env, b ?? {});
+  }
+
+  async upload_part(id: string, partNumber: number, body: ReadableStream | ArrayBuffer | null): Promise<object> {
+    return uploadPart(this.env, id, partNumber, body);
+  }
+
+  async upload_complete(id: string): Promise<object> {
+    const r = (await uploadComplete(this.env, id)) as { ok?: boolean; id?: string };
+    if (!r.ok) return r;
+    // 棚の元を作り直す（5 分ごとの処理を待たずに棚に出す）。ラベルは名前と同じく棚の上書きに入れる
+    await refreshShelfItems(this.env);
+    const rec = await this.env.STORE.get("upload/rec/" + String(r.id).replace(/[^A-Za-z0-9_-]/g, "_") + ".json");
+    const labels = rec ? ((JSON.parse(await rec.text()) as { labels?: string[] }).labels ?? []) : [];
+    if (labels.length) await metaSet(this.env, [{ id: String(r.id), labels_add: labels }]);
+    return r;
+  }
+
+  async upload_abort(id: string): Promise<object> {
+    return uploadAbort(this.env, id);
+  }
+
   async suggest_kai(limit?: number): Promise<object> {
     return suggestKai(this.env, limit ?? 8);
   }
@@ -208,6 +235,21 @@ export class ArchiveApi extends WorkerEntrypoint<ArchiveEnv> {
     const id = String(recId ?? "").trim();
     if (!id) return { ok: false, error: "rec_id が空です" };
 
+    // 第32版：手で上げたもの（up_ で始まる）。下見 → 確定の 2 段は同じ
+    if (id.startsWith("up_")) {
+      const uk = "upload/rec/" + id.replace(/[^A-Za-z0-9_-]/g, "_") + ".json";
+      const uo = await this.env.STORE.get(uk);
+      if (!uo) return { ok: false, error: "not_found" };
+      const u = JSON.parse(await uo.text()) as { r2Key: string; date: string; title: string; state: string };
+      const h = await this.env.STORE.head(u.r2Key);
+      const gb = h ? Math.round((h.size / 1073741824) * 100) / 100 : 0;
+      if (!confirm) return { ok: true, mode: "preview", rec_id: id, kind: "upload", date: u.date, title: u.title, total_gb: gb, will_do: [h ? `R2 から 1 個（${gb} GB）を消す。戻せない` : "R2 にファイルが無い（控えだけ消す）"], note: "消すときは同じ rec_id で confirm: true を付けて呼び直す" };
+      if (h) await this.env.STORE.delete(u.r2Key);
+      await this.env.STORE.delete(uk);
+      await refreshShelfItems(this.env);
+      const left = !!(await this.env.STORE.head(u.r2Key));
+      return { ok: !left, mode: "deleted", rec_id: id, kind: "upload", left_in_r2: left ? [u.r2Key] : [] };
+    }
     // 古い録画（会議の番号）→ 新しい録画（台帳の控え）の順に探す
     const lo = await this.env.STORE.get(recKey(id));
     let kind: "legacy" | "new";
