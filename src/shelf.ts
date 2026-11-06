@@ -598,6 +598,15 @@ export async function memberPage(env: ArchiveEnv, id: string, videoSrc: string, 
   return { ok: true, html, title: t };
 }
 
+/** 会員サイトに入れるときに写す中身（名前・要約・目次・長さ） */
+export async function memberInfo(env: ArchiveEnv, id: string): Promise<object> {
+  const m = await memberMedia(env, id);
+  if (!m) return { ok: false, error: "not_found" };
+  const { summary, chapters } = parseDescription(m.media.description);
+  const at = (t: number) => { const h = Math.floor(t / 3600), mm = Math.floor((t % 3600) / 60), ss = Math.floor(t % 60); return (h ? `${h}:${String(mm).padStart(2, "0")}` : String(mm)) + ":" + String(ss).padStart(2, "0"); };
+  return { ok: true, id: m.it.id, title: m.title, summary, toc: chapters.map((c) => ({ at: at(c.t), label: c.name })), minutes: m.it.minutes };
+}
+
 /** 会員サイトの映像（Range つき）。range は届いた Range ヘッダーのまま */
 export async function memberVideo(env: ArchiveEnv, id: string, range?: string | null, method?: string): Promise<Response> {
   const m = await memberMedia(env, id);

@@ -22,7 +22,7 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { buildArchiveList, readSheetFailures, type ArchiveEnv, type ArchiveListResult, type ArchiveRow } from "./archive";
 import { recKey, type LegacyRec } from "./legacy";
-import { labelsEdit, memberPage, memberVideo, metaSet, shareIssue, shareSet, shelfList, suggestKai } from "./shelf";
+import { labelsEdit, memberInfo, memberPage, memberVideo, metaSet, shareIssue, shareSet, shelfList, suggestKai } from "./shelf";
 
 export interface SearchQuery {
   date_from?: string;
@@ -178,6 +178,11 @@ export class ArchiveApi extends WorkerEntrypoint<ArchiveEnv> {
   /** 会員サイトの見る画面（第30版）。呼ぶ側がログインと権利を確かめてから */
   async member_page(id: string, videoSrc: string, title?: string): Promise<object> {
     return memberPage(this.env, id, videoSrc, title);
+  }
+
+  /** 会員サイトに入れるときに写す中身（名前・要約・目次・長さ） */
+  async member_info(id: string): Promise<object> {
+    return memberInfo(this.env, id);
   }
 
   /** 会員サイトの映像（Range つき）。呼ぶ側がログインと権利を確かめてから */
