@@ -23,6 +23,7 @@
 
 import { cuesForPlayer, parseDescription, playerHtml, type PlayerCue } from "./player";
 import { mainVideo, recKey, type LegacyRec } from "./legacy";
+import { uploadRecKey, type UploadRec } from "./upload";
 
 export interface ShareEnv {
   STORE: R2Bucket;
@@ -40,6 +41,8 @@ export interface ShareRec {
   jobKey: string;
   /** 第28版：古い録画（legacy/rec/）の会議の番号。新しい録画では無い */
   legacyId?: string;
+  /** 第32版：手で上げた録画（upload/rec/）の番号（便 C） */
+  uploadId?: string;
   title: string;
   createdAt: string;
   stopped?: boolean;
@@ -304,6 +307,11 @@ interface Media {
 
 /** リンクの控えから、今の映像と文字起こしの置き場を読む（名前をそろえる段が置き場を変えるので毎回読む） */
 export async function mediaFor(env: ShareEnv, rec: ShareRec): Promise<Media | null> {
+  if (rec.uploadId) {
+    const u = await readJson<UploadRec>(env.STORE, uploadRecKey(rec.uploadId));
+    if (!u || u.state !== "done") return null;
+    return { videoKey: u.r2Key, vttKey: null, date: u.date, description: undefined };
+  }
   if (rec.legacyId) {
     const r = await readJson<LegacyRec>(env.STORE, recKey(rec.legacyId));
     if (!r || r.r2DeletedAt || !r.r2Done) return null;
@@ -400,7 +408,8 @@ export async function streamVideo(request: Request, env: ShareEnv, key: string):
   if (!head) return new Response("録画が見つかりません。", { status: 404, headers: NO_INDEX });
   const size = head.size;
   const base: Record<string, string> = {
-    "content-type": "video/mp4",
+    // 第32版：手で上げた動画・音声は入れたときの種類（mov・mp3 など）で返す
+    "content-type": head.httpMetadata?.contentType || "video/mp4",
     "accept-ranges": "bytes",
     "content-disposition": "inline",
     ...NO_INDEX,
