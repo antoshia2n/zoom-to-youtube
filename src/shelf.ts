@@ -59,6 +59,8 @@ interface Meta {
 }
 
 export const ISSUE_EMPTY = "ほぼ空（1 分未満か 10MB 未満）";
+/** 第31版：同じ名前の録画がほかにもある（2026-11-06 会員サイトに入れるとき取り違えた件） */
+export const ISSUE_SAME_NAME = "同じ名前の録画がほかにもある";
 
 /** ラベルの揺れ（全角半角・空白・大文字小文字）を同じものとして見るための鍵 */
 export function labelKey(s: string): string {
@@ -316,6 +318,11 @@ export async function shelfList(env: ArchiveEnv): Promise<{ ok: true; total: num
       issues,
     });
   });
+  // 同じ名前（空白と全角半角の違いは同じとみなす）が 2 本以上あるものに印を付ける
+  const nameKey = (t: string) => t.normalize("NFKC").replace(/\s+/g, "");
+  const byName = new Map<string, number>();
+  for (const r of rows) byName.set(nameKey(r.title), (byName.get(nameKey(r.title)) ?? 0) + 1);
+  for (const r of rows) if ((byName.get(nameKey(r.title)) ?? 0) > 1) r.issues.push(ISSUE_SAME_NAME);
   rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   const counts: Record<string, number> = { all: rows.length };
   for (const k of KAIS) counts[k] = rows.filter((r) => r.kai === k).length;
@@ -596,6 +603,23 @@ export async function memberPage(env: ArchiveEnv, id: string, videoSrc: string, 
     hideShare: true,
   });
   return { ok: true, html, title: t };
+}
+
+/** 第31版：会員サイトの見る画面（マーケくんが自分の画面で組む）に渡す中身。映像の置き場はマーケくんが合言葉に入れる */
+export async function memberData(env: ArchiveEnv, id: string): Promise<object> {
+  const m = await memberMedia(env, id);
+  if (!m) return { ok: false, error: "not_found" };
+  const { summary, chapters } = parseDescription(m.media.description);
+  return { ok: true, id: m.it.id, title: m.title, date: m.media.date ?? m.it.date, minutes: m.it.minutes, summary, chapters, cues: await playerCues(env, m.media.vttKey), video_key: m.media.videoKey };
+}
+
+/** 第31版：置き場を指して流す（棚の一覧を読まない）。mp4 だけ */
+export async function memberStream(env: ArchiveEnv, key: string, range?: string | null, method?: string): Promise<Response> {
+  const k = String(key ?? "");
+  if (!/\.mp4$/i.test(k) || k.includes("..") || k.startsWith("/") || k.startsWith("share/") || k.startsWith("shelf/") || k.startsWith("config/")) return new Response("", { status: 404 });
+  const headers: Record<string, string> = {};
+  if (range) headers.range = String(range);
+  return streamVideo(new Request("https://member.local/video", { method: method === "HEAD" ? "HEAD" : "GET", headers }), env, k);
 }
 
 /** 会員サイトに入れるときに写す中身（名前・要約・目次・長さ） */

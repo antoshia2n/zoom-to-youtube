@@ -1,5 +1,6 @@
 /**
- * zoom-to-youtube / 第30版（2026-11-06 開発部・便 B：会員サイトの中で流す member_page / member_video。デモに Naoki OK 18:23）
+ * zoom-to-youtube / 第31版（2026-11-06 開発部・便 B2：member_data / member_stream・点検に同じ名前）
+ * 第30版（2026-11-06 開発部・便 B：会員サイトの中で流す member_page / member_video。デモに Naoki OK 18:23）
  * 第29版（2026-11-06 開発部・録画の棚 便 A：ラベル・会の種類の案を 5 分ごとに 6 本・点検の名前）
  *
  * zoom-to-youtube / 第28版（2026-11-06 開発部・便 2：録画の棚。マーケくんの「録画」から結びで呼ぶ）
