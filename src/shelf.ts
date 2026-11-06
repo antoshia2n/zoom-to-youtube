@@ -319,12 +319,18 @@ export async function shelfList(env: ArchiveEnv): Promise<{ ok: true; total: num
   counts.suggest = rows.filter((r) => r.suggest_kai || r.suggest_name).length;
   counts.issues = rows.filter((r) => r.issues.length).length;
   // 便 A：会の種類の案の進み具合（5 分ごとの処理が少しずつ出す）
-  counts.sug_pending = all.filter((it) => (metas.get(metaKey(it.id))?.kai ?? it.baseKai) === "その他" && !sugs.has(sugKey(it.id))).length;
+  counts.sug_pending = all.filter((it) => {
+    if ((metas.get(metaKey(it.id))?.kai ?? it.baseKai) !== "その他") return false;
+    const g = sugs.get(sugKey(it.id));
+    return !g || g.why.startsWith(NO_TRANSCRIPT);
+  }).length;
   const none = all.map((it) => sugs.get(sugKey(it.id))).filter((g, i) => g && !g.kai && (metas.get(metaKey(all[i].id))?.kai ?? all[i].baseKai) === "その他") as Sug[];
   counts.sug_none = none.length;
-  counts.sug_none_no_transcript = none.filter((g) => g.why.startsWith("文字起こしが無い")).length;
+  counts.sug_none_no_transcript = none.filter((g) => g.why.startsWith(NO_TRANSCRIPT)).length;
+  counts.sug_none_title = none.filter((g) => g.why.startsWith("題名からも決められない")).length;
+  counts.sug_from_title = all.filter((it) => sugs.get(sugKey(it.id))?.why.startsWith(FROM_TITLE)).length;
   counts.sug_none_ai_failed = none.filter((g) => g.why.startsWith("AI が答えなかった")).length;
-  counts.sug_none_other = none.length - counts.sug_none_no_transcript - counts.sug_none_ai_failed;
+  counts.sug_none_other = none.length - counts.sug_none_no_transcript - counts.sug_none_ai_failed - counts.sug_none_title;
   return { ok: true, total: rows.length, counts, short_link_ready: shortOk, rows };
 }
 
@@ -473,38 +479,56 @@ async function transcriptOf(env: ArchiveEnv, it: Item): Promise<string | null> {
 }
 
 /** 「その他」でまだ案の無い録画に、会の種類の案を付ける（1 回に多くて limit 本） */
+const KAI_GUIDE =
+  "選べるのは セミナー（講師が複数の参加者に教える）・打ち合わせ（仕事の相談や会議）・個別相談（1 対 1 で相手の悩みを聞く）・Zoom添削（相手の文章や投稿を直す）・その他 のどれか。" +
+  "答えは JSON だけ：{\"kai\":\"…\",\"why\":\"30 文字以内の理由\"}。理由に人の名前を書かない。";
+
+/** 文字起こしが無くて止まった案は、題名から読み直す（2026-11-06 Naoki OK 17:38） */
+const NO_TRANSCRIPT = "文字起こしが無い";
+export const FROM_TITLE = "題名から：";
+
+async function askKai(env: ArchiveEnv, instructions: string, input: string): Promise<{ kai: Kai | null; why: string }> {
+  const res = await (env.AI as Ai).run(SUG_MODEL as keyof AiModels, { instructions, input, reasoning: { effort: "low" } } as never);
+  const parsed = parseJson(outputText(res));
+  if (!parsed) throw new Error("AI の答えが JSON で読めなかった");
+  const j = parsed as { kai?: string; why?: string };
+  const kai = (KAIS as readonly string[]).includes(j.kai ?? "") ? (j.kai as Kai) : null;
+  const why = String(j.why ?? "").replace(/[\r\n]/g, " ").slice(0, 40);
+  return { kai, why: /(さん|様|さま)/.test(why) ? "" : why };
+}
+
 export async function suggestKai(env: ArchiveEnv, limit = 8): Promise<object> {
   if (!env.AI) return { ok: false, error: "no_ai" };
   const metas = await listJson<Meta>(env.STORE, "shelf/meta/");
   const sugs = await listJson<Sug>(env.STORE, "shelf/sug/");
-  // 新しい録画から読む（使う見込みが高く、古い録画は文字起こしが無いことが多いため）
+  // 新しい録画から読む（使う見込みが高く、古い録画は文字起こしが無いことが多いため）。文字起こしが無くて止まったものも読み直す
   const todo = (await items(env))
-    .filter((it) => (metas.get(metaKey(it.id))?.kai ?? it.baseKai) === "その他" && !sugs.has(sugKey(it.id)))
+    .filter((it) => {
+      if ((metas.get(metaKey(it.id))?.kai ?? it.baseKai) !== "その他") return false;
+      const g = sugs.get(sugKey(it.id));
+      return !g || g.why.startsWith(NO_TRANSCRIPT);
+    })
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   const n = Math.max(1, Math.min(20, Math.floor(limit)));
   let made = 0;
   let none = 0;
   for (const it of todo.slice(0, n)) {
     const text = await transcriptOf(env, it);
-    let sug: Sug = { kai: null, why: "文字起こしが無い", at: new Date().toISOString() };
-    if (text) {
-      try {
-        const res = await env.AI.run(SUG_MODEL as keyof AiModels, {
-          instructions:
-            "Zoom の録画の文字起こしを読み、会の種類を 1 つ選ぶ。選べるのは セミナー（講師が複数の参加者に教える）・打ち合わせ（仕事の相談や会議）・個別相談（1 対 1 で相手の悩みを聞く）・Zoom添削（相手の文章や投稿を直す）・その他 のどれか。" +
-            "答えは JSON だけ：{\"kai\":\"…\",\"why\":\"30 文字以内の理由\"}。理由に人の名前を書かない。",
-          input: text,
-          reasoning: { effort: "low" },
-        } as never);
-        const parsed = parseJson(outputText(res));
-        if (!parsed) throw new Error("AI の答えが JSON で読めなかった");
-        const j = parsed as { kai?: string; why?: string };
-        const kai = (KAIS as readonly string[]).includes(j.kai ?? "") ? (j.kai as Kai) : null;
-        const why = String(j.why ?? "").replace(/[\r\n]/g, " ").slice(0, 40);
-        sug = { kai, why: /(さん|様|さま)/.test(why) ? "" : why, at: new Date().toISOString() };
-      } catch (e) {
-        sug = { kai: null, why: `AI が答えなかった：${e instanceof Error ? e.message.slice(0, 120) : String(e)}`, at: new Date().toISOString() };
+    const title = ((!it.managed && metas.get(metaKey(it.id))?.title) || it.baseTitle || "").trim();
+    let sug: Sug;
+    try {
+      if (text) {
+        const r = await askKai(env, "Zoom の録画の文字起こしを読み、会の種類を 1 つ選ぶ。" + KAI_GUIDE, text);
+        sug = { ...r, at: new Date().toISOString() };
+      } else if (title) {
+        // 文字起こしが無い：題名だけで選ぶ。中身を読んだ案より確度が低いので、理由の頭に「題名から：」を付けて区別する
+        const r = await askKai(env, "Zoom の録画の題名だけを見て、会の種類を 1 つ選ぶ。題名から決められなければ その他 にする。" + KAI_GUIDE, `題名：${title}\n長さ：${it.minutes ?? "不明"} 分`);
+        sug = { kai: r.kai, why: (r.kai && r.kai !== "その他" ? FROM_TITLE : "題名からも決められない：") + r.why, at: new Date().toISOString() };
+      } else {
+        sug = { kai: null, why: NO_TRANSCRIPT + "（題名も無い）", at: new Date().toISOString() };
       }
+    } catch (e) {
+      sug = { kai: null, why: `AI が答えなかった：${e instanceof Error ? e.message.slice(0, 120) : String(e)}`, at: new Date().toISOString() };
     }
     if (sug.kai && sug.kai !== "その他") made++;
     else none++;
