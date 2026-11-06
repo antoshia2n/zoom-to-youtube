@@ -1,4 +1,9 @@
 /**
+ * zoom-to-youtube / 第28版（2026-11-06 開発部・便 2：録画の棚。マーケくんの「録画」から結びで呼ぶ）
+ *   ・ArchiveApi に shelf・share_issue・share_set・meta_set・suggest_kai（src/shelf.ts）
+ *   ・古い録画（11/02 より前）にも共有リンクを出せる（share/l/）
+ *   ・共有を止める・期限の正本は棚。管理シートの U・V は写しになった
+ *
  * zoom-to-youtube / 第27版（2026-11-06 開発部・便 1：短いリンク v.shia2n.jp と、録画を見る画面）
  *
  * 第27版で足したこと（作る前の 1 枚とデモに Naoki OK 2026-11-06 12:43）
