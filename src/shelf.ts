@@ -49,7 +49,21 @@ interface JobLike {
 interface Meta {
   title?: string;
   kai?: Kai;
+  /** 便 A（2026-11-06）：ラベル（自由に付ける札・複数） */
+  labels?: string[];
   updatedAt: string;
+}
+
+export const ISSUE_EMPTY = "ほぼ空（1 分未満か 10MB 未満）";
+
+/** ラベルの揺れ（全角半角・空白・大文字小文字）を同じものとして見るための鍵 */
+export function labelKey(s: string): string {
+  return s.normalize("NFKC").replace(/\s+/g, "").toLowerCase();
+}
+/** 入ってきたラベルを、すでにある同じラベルの書き方にそろえる */
+function canonLabel(v: string, known: string[]): string {
+  const t = v.normalize("NFKC").replace(/[\r\n\t]+/g, " ").trim().slice(0, 30);
+  return known.find((k) => labelKey(k) === labelKey(t)) ?? t;
 }
 
 interface Sug {
@@ -70,6 +84,7 @@ export interface ShelfRow {
   size_gb: number | null;
   youtube: boolean;
   share: null | { link: string; state: "on" | "stop" | "expired"; views: number; expires: string | null; last_viewed_at: string | null };
+  labels: string[];
   suggest_kai: { kai: string; why: string } | null;
   suggest_name: string | null;
   issues: string[];
@@ -277,7 +292,7 @@ export async function shelfList(env: ArchiveEnv): Promise<{ ok: true; total: num
       const [, mm, dd] = it.date.split("-").map(Number);
       if (md !== `${mm}-${dd}`) issues.push("名前の日付と収録日が合わない");
     }
-    if ((it.sizeGb !== null && it.sizeGb < 0.01) || (it.minutes !== null && it.minutes < 1)) issues.push("1 分未満・ほぼ空");
+    if ((it.sizeGb !== null && it.sizeGb < 0.01) || (it.minutes !== null && it.minutes < 1)) issues.push(ISSUE_EMPTY);
     if (!it.playable) issues.push("見る画面で流せる動画が無い（音声だけなど）");
     rows.push({
       id: it.id,
@@ -290,6 +305,7 @@ export async function shelfList(env: ArchiveEnv): Promise<{ ok: true; total: num
       size_gb: it.sizeGb,
       youtube: it.youtube,
       share: shareView(shares[i], shortOk),
+      labels: meta?.labels ?? [],
       suggest_kai: kai === "その他" && sug?.kai && sug.kai !== "その他" ? { kai: sug.kai, why: sug.why } : null,
       // 日付が合わないものは中身が別の回の見込みなので、そろえる案は出さず点検に回す
       suggest_name: it.managed || issues.includes("名前の日付と収録日が合わない") ? null : canonicalName(it.date, kai, title),
@@ -302,6 +318,9 @@ export async function shelfList(env: ArchiveEnv): Promise<{ ok: true; total: num
   counts.shared = rows.filter((r) => r.share?.state === "on").length;
   counts.suggest = rows.filter((r) => r.suggest_kai || r.suggest_name).length;
   counts.issues = rows.filter((r) => r.issues.length).length;
+  // 便 A：会の種類の案の進み具合（5 分ごとの処理が少しずつ出す）
+  counts.sug_pending = all.filter((it) => (metas.get(metaKey(it.id))?.kai ?? it.baseKai) === "その他" && !sugs.has(sugKey(it.id))).length;
+  counts.sug_none = all.filter((it) => (metas.get(metaKey(it.id))?.kai ?? it.baseKai) === "その他" && sugs.get(sugKey(it.id)) && !sugs.get(sugKey(it.id))?.kai).length;
   return { ok: true, total: rows.length, counts, short_link_ready: shortOk, rows };
 }
 
@@ -358,8 +377,17 @@ export async function shareSet(env: ArchiveEnv, id: string, opts: { stopped?: bo
 /* 名前と会の種類                                                      */
 /* ------------------------------------------------------------------ */
 
-export async function metaSet(env: ArchiveEnv, list: { id: string; title?: string; kai?: string }[]): Promise<object> {
+async function knownLabels(env: ArchiveEnv): Promise<string[]> {
+  const metas = await listJson<Meta>(env.STORE, "shelf/meta/");
+  return [...new Set([...metas.values()].flatMap((m) => m.labels ?? []))];
+}
+
+export async function metaSet(
+  env: ArchiveEnv,
+  list: { id: string; title?: string; kai?: string; labels_add?: string[]; labels_remove?: string[] }[],
+): Promise<object> {
   const all = new Map((await items(env)).map((x) => [x.id, x]));
+  const known = await knownLabels(env);
   const done: string[] = [];
   const refused: { id: string; why: string }[] = [];
   for (const m of (list ?? []).slice(0, 600)) {
@@ -380,6 +408,18 @@ export async function metaSet(env: ArchiveEnv, list: { id: string; title?: strin
     const cur = (await readJson<Meta>(env.STORE, metaKey(it.id))) ?? { updatedAt: "" };
     if (m.kai !== undefined) cur.kai = m.kai as Kai;
     if (m.title !== undefined) cur.title = title || undefined;
+    if (Array.isArray(m.labels_add) || Array.isArray(m.labels_remove)) {
+      let ls = cur.labels ?? [];
+      for (const raw of (m.labels_add ?? []).slice(0, 20)) {
+        const l = canonLabel(String(raw ?? ""), known);
+        if (!l) continue;
+        if (!known.includes(l)) known.push(l);
+        if (!ls.some((x) => labelKey(x) === labelKey(l))) ls = [...ls, l];
+      }
+      const rm = new Set((m.labels_remove ?? []).map((x) => labelKey(String(x ?? ""))));
+      ls = ls.filter((x) => !rm.has(labelKey(x)));
+      cur.labels = ls.length ? ls : undefined;
+    }
     cur.updatedAt = new Date().toISOString();
     await env.STORE.put(metaKey(it.id), JSON.stringify(cur));
     // リンクの題名もそろえる（見る画面の題名）
@@ -464,4 +504,31 @@ export async function suggestKai(env: ArchiveEnv, limit = 8): Promise<object> {
     await env.STORE.put(sugKey(it.id), JSON.stringify(sug));
   }
   return { ok: true, looked: Math.min(n, todo.length), suggested: made, no_suggestion: none, remaining: Math.max(0, todo.length - n) };
+}
+
+/* ------------------------------------------------------------------ */
+/* ラベルを整える（名前を変える・削除。付いている録画すべてに効く）     */
+/* ------------------------------------------------------------------ */
+
+export async function labelsEdit(env: ArchiveEnv, opts: { action: "rename" | "delete"; from: string; to?: string }): Promise<object> {
+  const from = labelKey(String(opts?.from ?? ""));
+  if (!from) return { ok: false, error: "from_required" };
+  const metas = await listJson<Meta>(env.STORE, "shelf/meta/");
+  const known = [...new Set([...metas.values()].flatMap((m) => m.labels ?? []))];
+  let to = "";
+  if (opts.action === "rename") {
+    to = canonLabel(String(opts.to ?? ""), known.filter((k) => labelKey(k) !== from));
+    if (!to) return { ok: false, error: "to_required" };
+  } else if (opts.action !== "delete") return { ok: false, error: "bad_action" };
+  let changed = 0;
+  for (const [key, m] of metas) {
+    if (!(m.labels ?? []).some((l) => labelKey(l) === from)) continue;
+    let ls = (m.labels ?? []).filter((l) => labelKey(l) !== from);
+    if (to && !ls.some((l) => labelKey(l) === labelKey(to))) ls = [...ls, to];
+    m.labels = ls.length ? ls : undefined;
+    m.updatedAt = new Date().toISOString();
+    await env.STORE.put(key, JSON.stringify(m));
+    changed++;
+  }
+  return { ok: true, action: opts.action, to: to || null, changed };
 }
