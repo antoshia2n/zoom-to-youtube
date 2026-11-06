@@ -118,6 +118,7 @@ import {
 import { legacyRows, mainVideo, migrateLegacy } from "./legacy";
 import { purgeZoom } from "./purge";
 import { handleShare, syncShares, SHORT_HOST, type YoutubeCandidate } from "./share";
+import { refreshShelfItems } from "./shelf";
 
 export { ArchiveApi } from "./api";
 
@@ -2220,9 +2221,17 @@ export default {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     const log: string[] = [];
     ctx.waitUntil(
-      withLock(env, (beat) => runAll(env, (line) => log.push(line), beat), (line) => log.push(line)).then(() =>
-        console.log(log.join("\n")),
-      ),
+      withLock(env, (beat) => runAll(env, (line) => log.push(line), beat), (line) => log.push(line))
+        // 第28版の直し：録画の棚の元をまとめ直す（開くときに 1 回読むだけにするため）
+        .then(async () => {
+          try {
+            const n = (await refreshShelfItems(env)).length;
+            log.push(`録画の棚：まとめ直した ${n} 本`);
+          } catch (e) {
+            log.push(`録画の棚のまとめ直しに失敗：${e instanceof Error ? e.message : String(e)}`);
+          }
+        })
+        .then(() => console.log(log.join("\n"))),
     );
   },
 };
