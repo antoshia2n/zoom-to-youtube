@@ -320,7 +320,11 @@ export async function shelfList(env: ArchiveEnv): Promise<{ ok: true; total: num
   counts.issues = rows.filter((r) => r.issues.length).length;
   // 便 A：会の種類の案の進み具合（5 分ごとの処理が少しずつ出す）
   counts.sug_pending = all.filter((it) => (metas.get(metaKey(it.id))?.kai ?? it.baseKai) === "その他" && !sugs.has(sugKey(it.id))).length;
-  counts.sug_none = all.filter((it) => (metas.get(metaKey(it.id))?.kai ?? it.baseKai) === "その他" && sugs.get(sugKey(it.id)) && !sugs.get(sugKey(it.id))?.kai).length;
+  const none = all.map((it) => sugs.get(sugKey(it.id))).filter((g, i) => g && !g.kai && (metas.get(metaKey(all[i].id))?.kai ?? all[i].baseKai) === "その他") as Sug[];
+  counts.sug_none = none.length;
+  counts.sug_none_no_transcript = none.filter((g) => g.why.startsWith("文字起こしが無い")).length;
+  counts.sug_none_ai_failed = none.filter((g) => g.why.startsWith("AI が答えなかった")).length;
+  counts.sug_none_other = none.length - counts.sug_none_no_transcript - counts.sug_none_ai_failed;
   return { ok: true, total: rows.length, counts, short_link_ready: shortOk, rows };
 }
 
@@ -473,9 +477,10 @@ export async function suggestKai(env: ArchiveEnv, limit = 8): Promise<object> {
   if (!env.AI) return { ok: false, error: "no_ai" };
   const metas = await listJson<Meta>(env.STORE, "shelf/meta/");
   const sugs = await listJson<Sug>(env.STORE, "shelf/sug/");
-  const todo = (await items(env)).filter(
-    (it) => (metas.get(metaKey(it.id))?.kai ?? it.baseKai) === "その他" && !sugs.has(sugKey(it.id)),
-  );
+  // 新しい録画から読む（使う見込みが高く、古い録画は文字起こしが無いことが多いため）
+  const todo = (await items(env))
+    .filter((it) => (metas.get(metaKey(it.id))?.kai ?? it.baseKai) === "その他" && !sugs.has(sugKey(it.id)))
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   const n = Math.max(1, Math.min(20, Math.floor(limit)));
   let made = 0;
   let none = 0;
@@ -491,12 +496,14 @@ export async function suggestKai(env: ArchiveEnv, limit = 8): Promise<object> {
           input: text,
           reasoning: { effort: "low" },
         } as never);
-        const j = (parseJson(outputText(res)) ?? {}) as { kai?: string; why?: string };
+        const parsed = parseJson(outputText(res));
+        if (!parsed) throw new Error("AI の答えが JSON で読めなかった");
+        const j = parsed as { kai?: string; why?: string };
         const kai = (KAIS as readonly string[]).includes(j.kai ?? "") ? (j.kai as Kai) : null;
         const why = String(j.why ?? "").replace(/[\r\n]/g, " ").slice(0, 40);
         sug = { kai, why: /(さん|様|さま)/.test(why) ? "" : why, at: new Date().toISOString() };
       } catch (e) {
-        sug = { kai: null, why: "AI が答えなかった", at: new Date().toISOString() };
+        sug = { kai: null, why: `AI が答えなかった：${e instanceof Error ? e.message.slice(0, 120) : String(e)}`, at: new Date().toISOString() };
       }
     }
     if (sug.kai && sug.kai !== "その他") made++;
