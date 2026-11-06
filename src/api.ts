@@ -5,6 +5,12 @@
  *   list    一覧。既定は数と失敗だけ（全部の行は include_rows のときだけ。533 行・約 21 万字で重いため）
  *   search  探す。日付・会の名前・題名の言葉・大きさ・YouTube の有無・文字起こしの中の言葉で絞り、多くても 50 件
  *   remove  R2 から消す。confirm が true でなければ下見だけを返す（消さない）
+ *   第28版（便 2 録画の棚・マーケくんの「録画」から呼ぶ）
+ *   shelf        棚の一覧（全部の録画・共有の状態・整理の案・点検）
+ *   share_issue  共有リンクを出す（すでにあればそれを返す）
+ *   share_set    共有を止める・期限
+ *   meta_set     名前と会の種類（まとめて）
+ *   suggest_kai  「その他」の録画に会の種類の案を AI で付ける（少しずつ）
  *
  * 決め（2026-11-02 Naoki OK の便 4）
  *   ・消すかどうかは毎回 Naoki が決める。自動で消す仕組みは作らない
@@ -15,6 +21,7 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { buildArchiveList, readSheetFailures, type ArchiveEnv, type ArchiveListResult, type ArchiveRow } from "./archive";
 import { recKey, type LegacyRec } from "./legacy";
+import { metaSet, shareIssue, shareSet, shelfList, suggestKai } from "./shelf";
 
 export interface SearchQuery {
   date_from?: string;
@@ -145,6 +152,26 @@ export class ArchiveApi extends WorkerEntrypoint<ArchiveEnv> {
       rows: picked,
       ...(notRead ? { transcript_not_read: notRead, note: `文字起こしを読んだのは ${MAX_TRANSCRIPT_READS} 本まで。ほかの条件で先に絞ると残りも探せる` } : {}),
     };
+  }
+
+  async shelf(): Promise<object> {
+    return shelfList(this.env);
+  }
+
+  async share_issue(id: string): Promise<object> {
+    return shareIssue(this.env, id);
+  }
+
+  async share_set(id: string, opts: { stopped?: boolean; expires?: string | null }): Promise<object> {
+    return shareSet(this.env, id, opts ?? {});
+  }
+
+  async meta_set(list: { id: string; title?: string; kai?: string }[]): Promise<object> {
+    return metaSet(this.env, Array.isArray(list) ? list : []);
+  }
+
+  async suggest_kai(limit?: number): Promise<object> {
+    return suggestKai(this.env, limit ?? 8);
   }
 
   async remove(recId: string, confirm: boolean): Promise<object> {

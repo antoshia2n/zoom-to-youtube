@@ -193,7 +193,7 @@ const INSTRUCTIONS = [
   "絶対に守ること：人の名前・あだ名・会社名・「〜さん」の呼び方を、どの欄にも書かない。参加者が誰かが分かることも書かない。",
 ].join("\n");
 
-function outputText(res: unknown): string {
+export function outputText(res: unknown): string {
   if (typeof res === "string") return res;
   const r = res as { output_text?: string; response?: unknown; output?: { type?: string; content?: { type?: string; text?: string }[] }[] };
   if (typeof r?.output_text === "string") return r.output_text;
@@ -206,7 +206,7 @@ function outputText(res: unknown): string {
   return texts.join("\n");
 }
 
-function parseJson(s: string): Record<string, unknown> | null {
+export function parseJson(s: string): Record<string, unknown> | null {
   const a = s.indexOf("{");
   const b = s.lastIndexOf("}");
   if (a < 0 || b <= a) return null;

@@ -22,6 +22,7 @@
  */
 
 import { cuesForPlayer, parseDescription, playerHtml, type PlayerCue } from "./player";
+import { mainVideo, recKey, type LegacyRec } from "./legacy";
 
 export interface ShareEnv {
   STORE: R2Bucket;
@@ -33,9 +34,12 @@ export const SHORT_BASE = `https://${SHORT_HOST}`;
 const SHORT_OK_KEY = "config/short-host-ok";
 const SHORT_LEN = 7;
 
-interface ShareRec {
+export interface ShareRec {
   token: string;
+  /** 新しい録画：job/ の置き場。古い録画では空 */
   jobKey: string;
+  /** 第28版：古い録画（legacy/rec/）の会議の番号。新しい録画では無い */
+  legacyId?: string;
   title: string;
   createdAt: string;
   stopped?: boolean;
@@ -75,16 +79,18 @@ export interface ShareSyncResult {
   failures: string[];
 }
 
-const tKey = (token: string) => `share/t/${token}.json`;
+export const tKey = (token: string) => `share/t/${token}.json`;
 const sKey = (short: string) => `share/s/${short}`;
-const jKey = (jobKey: string) => `share/j/${jobKey.replace(/[^A-Za-z0-9._-]/g, "_")}`;
+/** 第28版：古い録画からリンクの番号を引く */
+export const lKey = (uuid: string) => `share/l/${uuid.replace(/[^A-Za-z0-9._-]/g, "_")}`;
+export const jKey = (jobKey: string) => `share/j/${jobKey.replace(/[^A-Za-z0-9._-]/g, "_")}`;
 
-async function readJson<T>(store: R2Bucket, key: string): Promise<T | null> {
+export async function readJson<T>(store: R2Bucket, key: string): Promise<T | null> {
   const o = await store.get(key);
   return o ? (JSON.parse(await o.text()) as T) : null;
 }
 
-function newToken(): string {
+export function newToken(): string {
   const b = new Uint8Array(18);
   crypto.getRandomValues(b);
   return btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -106,7 +112,7 @@ export function newShort(): string {
 }
 
 /** リンクの控えに短い番号が無ければ付ける（ぶつかったら引き直す）。付けたら true */
-async function ensureShort(store: R2Bucket, rec: ShareRec): Promise<boolean> {
+export async function ensureShort(store: R2Bucket, rec: ShareRec): Promise<boolean> {
   if (rec.short) return false;
   for (let i = 0; i < 5; i++) {
     const s = newShort();
@@ -118,7 +124,7 @@ async function ensureShort(store: R2Bucket, rec: ShareRec): Promise<boolean> {
   throw new Error("短いリンクの番号がぶつかり続けました");
 }
 
-async function shortHostOk(store: R2Bucket): Promise<boolean> {
+export async function shortHostOk(store: R2Bucket): Promise<boolean> {
   return !!(await store.head(SHORT_OK_KEY));
 }
 
@@ -137,7 +143,7 @@ async function probeShortHost(store: R2Bucket): Promise<boolean> {
 }
 
 /** 管理シートや画面に出すリンク。v.shia2n.jp が届いていれば短い形、まだなら今までの形 */
-function linkFor(rec: ShareRec, shortOk: boolean): string {
+export function linkFor(rec: ShareRec, shortOk: boolean): string {
   return shortOk && rec.short ? `${SHORT_BASE}/${rec.short}` : `${SHARE_BASE}/v/${rec.token}`;
 }
 
@@ -154,7 +160,7 @@ function readDate(v: string | undefined): string | null {
   return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
 }
 
-function todayJst(): string {
+export function todayJst(): string {
   return new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
 }
 
@@ -218,19 +224,16 @@ export async function syncShares(
     if (isNew) res.notes.push(`共有リンク：${title}　${link}`);
     if ((v[19] ?? "") !== link) writes.push({ range: `${r.tab}!T${r.rowNo}`, values: [[link]] });
 
-    // 止める・期限・題名
-    const stopped = checked(v[20]);
-    const exp = readDate(v[21]);
-    if (exp === null) res.failures.push(`共有の期限が日付として読めない：${r.tab} の ${r.rowNo} 行目（${(v[21] ?? "").trim()}）`);
-    const expires = exp || undefined;
-    if (!!rec.stopped !== stopped || rec.expires !== expires || rec.title !== title) {
-      rec.stopped = stopped || undefined;
-      rec.expires = expires;
+    // 第28版：止める・期限の正本はマーケくんの「録画」（録画の棚）。シートの U・V は写し（2026-11-06 Naoki OK）
+    if (rec.title !== title) {
       rec.title = title;
       dirty = true;
       res.updated++;
     }
     if (dirty) await env.STORE.put(tKey(token), JSON.stringify(rec));
+    const stopCopy = rec.stopped ? "TRUE" : "FALSE";
+    if ((v[20] ?? "").trim().toUpperCase() !== stopCopy) writes.push({ range: `${r.tab}!U${r.rowNo}`, values: [[stopCopy]] });
+    if ((readDate(v[21]) ?? "") !== (rec.expires ?? "")) writes.push({ range: `${r.tab}!V${r.rowNo}`, values: [[rec.expires ?? ""]] });
 
     const views = String(rec.views ?? 0);
     if ((v[22] ?? "") !== views) writes.push({ range: `${r.tab}!W${r.rowNo}`, values: [[views]] });
@@ -246,7 +249,7 @@ export async function syncShares(
   for (const tab of tabs) {
     writes.push({
       range: `${tab}!S1:W1`,
-      values: [["YouTube に上げる", "共有リンク（自動）", "共有を止める", "共有の期限", "開かれた数（自動）"]],
+      values: [["YouTube に上げる", "共有リンク（自動）", "共有を止める（写し・マーケくんの録画で変える）", "共有の期限（写し・マーケくんの録画で変える）", "開かれた数（自動）"]],
     });
   }
   await write(writes);
@@ -292,21 +295,44 @@ function closed(why: string, status: number): Response {
   return page("見られません", `<div class="msg"><h1>この録画は見られません</h1><p>${esc(why)}</p></div>`, status);
 }
 
-/** 開けるかを確かめ、開けるなら録画の控えと今の置き場を返す */
-async function open(env: ShareEnv, token: string): Promise<{ rec: ShareRec; job: ShareJob } | { why: string; status: number }> {
+interface Media {
+  videoKey: string;
+  vttKey: string | null;
+  date?: string;
+  description?: string;
+}
+
+/** リンクの控えから、今の映像と文字起こしの置き場を読む（名前をそろえる段が置き場を変えるので毎回読む） */
+export async function mediaFor(env: ShareEnv, rec: ShareRec): Promise<Media | null> {
+  if (rec.legacyId) {
+    const r = await readJson<LegacyRec>(env.STORE, recKey(rec.legacyId));
+    if (!r || r.r2DeletedAt || !r.r2Done) return null;
+    const v = mainVideo(r.files);
+    if (!v?.r2Key) return null;
+    const t = r.files.find((f) => f.type === "TRANSCRIPT" && f.r2Done && f.r2Key);
+    return { videoKey: v.r2Key, vttKey: t?.r2Key ?? null, date: r.date, description: r.naming?.description };
+  }
+  const job = await readJson<ShareJob>(env.STORE, rec.jobKey);
+  if (!job || !job.r2Key || job.r2DeletedAt) return null;
+  return { videoKey: job.r2Key, vttKey: job.r2Key.replace(/\.mp4$/i, ".vtt"), date: job.date, description: job.naming?.description };
+}
+
+/** 開けるかを確かめ、開けるなら控えと今の置き場を返す */
+async function open(env: ShareEnv, token: string): Promise<{ rec: ShareRec; media: Media } | { why: string; status: number }> {
   if (!/^[A-Za-z0-9_-]{16,40}$/.test(token)) return { why: "リンクが正しくありません。", status: 404 };
   const rec = await readJson<ShareRec>(env.STORE, tKey(token));
   if (!rec) return { why: "リンクが正しくありません。", status: 404 };
   if (rec.stopped) return { why: "共有が止められています。", status: 410 };
   if (rec.expires && todayJst() > rec.expires) return { why: "共有の期限が過ぎました。", status: 410 };
-  const job = await readJson<ShareJob>(env.STORE, rec.jobKey);
-  if (!job || !job.r2Key || job.r2DeletedAt) return { why: "録画が見つかりません。", status: 404 };
-  return { rec, job };
+  const media = await mediaFor(env, rec);
+  if (!media) return { why: "録画が見つかりません。", status: 404 };
+  return { rec, media };
 }
 
 /** 文字起こし（映像の隣の .vtt）を見る画面の形で。無ければ空 */
-async function playerCues(env: ShareEnv, r2Key: string): Promise<PlayerCue[]> {
-  const o = await env.STORE.get(r2Key.replace(/\.mp4$/i, ".vtt"));
+async function playerCues(env: ShareEnv, vttKey: string | null): Promise<PlayerCue[]> {
+  if (!vttKey) return [];
+  const o = await env.STORE.get(vttKey);
   if (!o) return [];
   try {
     return await cuesForPlayer(await o.text());
@@ -346,26 +372,26 @@ export async function handleShare(request: Request, env: ShareEnv): Promise<Resp
   if (request.method !== "GET" && request.method !== "HEAD") return new Response("", { status: 405 });
   const got = await open(env, token);
   if ("why" in got) return video ? new Response(got.why, { status: got.status, headers: NO_INDEX }) : closed(got.why, got.status);
-  const { rec, job } = got;
+  const { rec, media } = got;
 
   if (!video) {
     rec.views = (rec.views ?? 0) + 1;
     rec.lastViewedAt = new Date().toISOString();
     await env.STORE.put(tKey(rec.token), JSON.stringify(rec));
-    const { summary, chapters } = parseDescription(job.naming?.description);
+    const { summary, chapters } = parseDescription(media.description);
     const html = playerHtml({
       title: rec.title,
-      date: job.date,
+      date: media.date,
       videoSrc: `${base}/video`,
       shareUrl: onShort ? `${SHORT_BASE}${base}` : `${SHARE_BASE}/v/${rec.token}`,
       key: rec.short ?? rec.token.slice(0, 12),
       summary,
       chapters,
-      cues: await playerCues(env, job.r2Key as string),
+      cues: await playerCues(env, media.vttKey),
     });
     return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", ...NO_INDEX } });
   }
-  return streamVideo(request, env, job.r2Key as string);
+  return streamVideo(request, env, media.videoKey);
 }
 
 /** R2 の原本を Range つきで流す（Safari は 0-1 の Range を送ってくるので 206 を正しく返す） */
