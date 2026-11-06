@@ -330,7 +330,7 @@ async function open(env: ShareEnv, token: string): Promise<{ rec: ShareRec; medi
 }
 
 /** 文字起こし（映像の隣の .vtt）を見る画面の形で。無ければ空 */
-async function playerCues(env: ShareEnv, vttKey: string | null): Promise<PlayerCue[]> {
+export async function playerCues(env: ShareEnv, vttKey: string | null): Promise<PlayerCue[]> {
   if (!vttKey) return [];
   const o = await env.STORE.get(vttKey);
   if (!o) return [];
@@ -395,7 +395,7 @@ export async function handleShare(request: Request, env: ShareEnv): Promise<Resp
 }
 
 /** R2 の原本を Range つきで流す（Safari は 0-1 の Range を送ってくるので 206 を正しく返す） */
-async function streamVideo(request: Request, env: ShareEnv, key: string): Promise<Response> {
+export async function streamVideo(request: Request, env: ShareEnv, key: string): Promise<Response> {
   const head = await env.STORE.head(key);
   if (!head) return new Response("録画が見つかりません。", { status: 404, headers: NO_INDEX });
   const size = head.size;
