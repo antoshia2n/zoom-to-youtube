@@ -13,13 +13,25 @@
  *   share/j/<job の置き場>  … 録画からリンクの番号を引く
  * リンクの控えは R2 の置き場（r2Key）を持たない。名前をそろえる段（rename.ts）が置き場を変えるので、
  * 開くたびに録画の控え（job/）から今の置き場を読む。
+ *
+ * 第27版（2026-11-06 便 1）：短いリンク https://v.shia2n.jp/<7 文字> と、見る画面（player.ts）。
+ *   share/s/<7 文字>      … 短い番号からリンクの番号を引く
+ *   config/short-host-ok  … v.shia2n.jp に一度でも届いたら置く印。印があるときだけ管理シートに短いリンクを書く
+ *                            （住所を Cloudflare の画面で足す前に短いリンクを配って開けない、を防ぐため）
+ * 今までの /v/<番号> のリンクはそのまま開く。
  */
+
+import { cuesForPlayer, parseDescription, playerHtml, type PlayerCue } from "./player";
 
 export interface ShareEnv {
   STORE: R2Bucket;
 }
 
 export const SHARE_BASE = "https://zoom-to-youtube.gameister1.workers.dev";
+export const SHORT_HOST = "v.shia2n.jp";
+export const SHORT_BASE = `https://${SHORT_HOST}`;
+const SHORT_OK_KEY = "config/short-host-ok";
+const SHORT_LEN = 7;
 
 interface ShareRec {
   token: string;
@@ -31,6 +43,8 @@ interface ShareRec {
   expires?: string;
   views: number;
   lastViewedAt?: string;
+  /** 第27版：短いリンクの番号（7 文字） */
+  short?: string;
 }
 
 export interface ShareJob {
@@ -62,6 +76,7 @@ export interface ShareSyncResult {
 }
 
 const tKey = (token: string) => `share/t/${token}.json`;
+const sKey = (short: string) => `share/s/${short}`;
 const jKey = (jobKey: string) => `share/j/${jobKey.replace(/[^A-Za-z0-9._-]/g, "_")}`;
 
 async function readJson<T>(store: R2Bucket, key: string): Promise<T | null> {
@@ -73,6 +88,43 @@ function newToken(): string {
   const b = new Uint8Array(18);
   crypto.getRandomValues(b);
   return btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+const B62 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+/** 7 文字の短い番号（62^7＝約 3.5 兆通り。数えて当てるのは現実的でない） */
+export function newShort(): string {
+  const b = new Uint8Array(SHORT_LEN * 2);
+  crypto.getRandomValues(b);
+  let out = "";
+  for (const x of b) {
+    if (x >= 248) continue; // 62 の倍数（248）未満だけ使い、偏りを出さない
+    out += B62[x % 62];
+    if (out.length === SHORT_LEN) break;
+  }
+  return out.length === SHORT_LEN ? out : newShort();
+}
+
+/** リンクの控えに短い番号が無ければ付ける（ぶつかったら引き直す）。付けたら true */
+async function ensureShort(store: R2Bucket, rec: ShareRec): Promise<boolean> {
+  if (rec.short) return false;
+  for (let i = 0; i < 5; i++) {
+    const s = newShort();
+    if (await store.head(sKey(s))) continue;
+    await store.put(sKey(s), rec.token);
+    rec.short = s;
+    return true;
+  }
+  throw new Error("短いリンクの番号がぶつかり続けました");
+}
+
+async function shortHostOk(store: R2Bucket): Promise<boolean> {
+  return !!(await store.head(SHORT_OK_KEY));
+}
+
+/** 管理シートや画面に出すリンク。v.shia2n.jp が届いていれば短い形、まだなら今までの形 */
+function linkFor(rec: ShareRec, shortOk: boolean): string {
+  return shortOk && rec.short ? `${SHORT_BASE}/${rec.short}` : `${SHARE_BASE}/v/${rec.token}`;
 }
 
 function checked(v: string | undefined): boolean {
@@ -120,6 +172,7 @@ export async function syncShares(
 ): Promise<ShareSyncResult> {
   const res: ShareSyncResult = { created: 0, updated: 0, candidates: [], notes: [], failures: [] };
   const idx = await jobIndex(env.STORE);
+  const shortOk = await shortHostOk(env.STORE);
   const writes: { range: string; values: string[][] }[] = [];
 
   for (const r of rows) {
@@ -137,15 +190,18 @@ export async function syncShares(
     let token = (await (await env.STORE.get(jKey(jobKey)))?.text()) ?? "";
     let rec = token ? await readJson<ShareRec>(env.STORE, tKey(token)) : null;
     let dirty = false;
+    let isNew = false;
     if (!rec) {
       token = newToken();
       rec = { token, jobKey, title, createdAt: new Date().toISOString(), views: 0 };
       await env.STORE.put(jKey(jobKey), token);
       dirty = true;
       res.created++;
-      res.notes.push(`共有リンク：${title}　${SHARE_BASE}/v/${token}`);
+      isNew = true;
     }
-    const link = `${SHARE_BASE}/v/${token}`;
+    if (await ensureShort(env.STORE, rec)) dirty = true;
+    const link = linkFor(rec, shortOk);
+    if (isNew) res.notes.push(`共有リンク：${title}　${link}`);
     if ((v[19] ?? "") !== link) writes.push({ range: `${r.tab}!T${r.rowNo}`, values: [[link]] });
 
     // 止める・期限・題名
@@ -234,28 +290,66 @@ async function open(env: ShareEnv, token: string): Promise<{ rec: ShareRec; job:
   return { rec, job };
 }
 
+/** 文字起こし（映像の隣の .vtt）を見る画面の形で。無ければ空 */
+async function playerCues(env: ShareEnv, r2Key: string): Promise<PlayerCue[]> {
+  const o = await env.STORE.get(r2Key.replace(/\.mp4$/i, ".vtt"));
+  if (!o) return [];
+  try {
+    return await cuesForPlayer(await o.text());
+  } catch {
+    return [];
+  }
+}
+
 /**
- * /v/<番号> と /v/<番号>/video を受ける。それ以外は null（呼ぶ側が 404 を返す）。
+ * 見る画面と映像を返す。それ以外は null（呼ぶ側が 404 を返す）。
+ *   どの住所でも：/v/<番号>・/v/<番号>/video
+ *   v.shia2n.jp：/<7 文字>・/<7 文字>/video
  */
 export async function handleShare(request: Request, env: ShareEnv): Promise<Response | null> {
   const url = new URL(request.url);
-  const m = url.pathname.match(/^\/v\/([^/]+)(\/video)?$/);
-  if (!m) return null;
+  const onShort = url.hostname === SHORT_HOST;
+  if (onShort && !(await shortHostOk(env.STORE))) {
+    await env.STORE.put(SHORT_OK_KEY, JSON.stringify({ at: new Date().toISOString() }));
+  }
+  let token = "";
+  let base = "";
+  let video = false;
+  const long = url.pathname.match(/^\/v\/([^/]+)(\/video)?$/);
+  const short = onShort ? url.pathname.match(/^\/([A-Za-z0-9]{7})(\/video)?$/) : null;
+  if (long) {
+    token = long[1];
+    base = `/v/${long[1]}`;
+    video = !!long[2];
+  } else if (short) {
+    token = (await (await env.STORE.get(sKey(short[1])))?.text()) ?? "";
+    base = `/${short[1]}`;
+    video = !!short[2];
+    if (!token) return video ? new Response("リンクが正しくありません。", { status: 404, headers: NO_INDEX }) : closed("リンクが正しくありません。", 404);
+  } else {
+    return null;
+  }
   if (request.method !== "GET" && request.method !== "HEAD") return new Response("", { status: 405 });
-  const got = await open(env, m[1]);
-  if ("why" in got) return m[2] ? new Response(got.why, { status: got.status, headers: NO_INDEX }) : closed(got.why, got.status);
+  const got = await open(env, token);
+  if ("why" in got) return video ? new Response(got.why, { status: got.status, headers: NO_INDEX }) : closed(got.why, got.status);
   const { rec, job } = got;
 
-  if (!m[2]) {
+  if (!video) {
     rec.views = (rec.views ?? 0) + 1;
     rec.lastViewedAt = new Date().toISOString();
     await env.STORE.put(tKey(rec.token), JSON.stringify(rec));
-    const date = job.date ? `収録日 ${job.date}` : "";
-    return page(
-      rec.title,
-      `<h1>${esc(rec.title)}</h1><p class="meta">${esc(date)}</p>` +
-        `<div class="box"><video controls playsinline preload="metadata" controlsList="nodownload" src="/v/${esc(rec.token)}/video"></video></div>`,
-    );
+    const { summary, chapters } = parseDescription(job.naming?.description);
+    const html = playerHtml({
+      title: rec.title,
+      date: job.date,
+      videoSrc: `${base}/video`,
+      shareUrl: onShort ? `${SHORT_BASE}${base}` : `${SHARE_BASE}/v/${rec.token}`,
+      key: rec.short ?? rec.token.slice(0, 12),
+      summary,
+      chapters,
+      cues: await playerCues(env, job.r2Key as string),
+    });
+    return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", ...NO_INDEX } });
   }
   return streamVideo(request, env, job.r2Key as string);
 }
