@@ -13,7 +13,7 @@
  */
 
 import { outputText, parseJson, type ArchiveEnv } from "./archive";
-import { legacyRows, mainVideo, recKey, type LegacyRec } from "./legacy";
+import { mainVideo, recKey, type LegacyRec } from "./legacy";
 import {
   ensureShort,
   jKey,
@@ -166,9 +166,32 @@ interface Item {
   playable: boolean;
 }
 
-async function items(env: ArchiveEnv): Promise<Item[]> {
+const ITEMS_KEY = "shelf/items.json";
+/** 控えのまとめが古くなったとみなす時間（5 分ごとの処理が作り直す。止まっていたときだけ開いた側で作り直す） */
+const ITEMS_STALE_MS = 30 * 60 * 1000;
+
+/**
+ * 棚の元（録画 1 本 1 行）。控えを 520 本余り読むので 20 秒を超えることがある（中継の打ち切りに当たる）。
+ * 5 分ごとの処理が shelf/items.json にまとめ、開くときはそれを 1 回読むだけにする（2026-11-06 第28版の直し）。
+ */
+async function items(env: ArchiveEnv, fresh = false): Promise<Item[]> {
+  if (!fresh) {
+    const c = await readJson<{ at: string; items: Item[] }>(env.STORE, ITEMS_KEY);
+    if (c && Date.now() - Date.parse(c.at) < ITEMS_STALE_MS) return c.items;
+  }
+  return refreshShelfItems(env);
+}
+
+/** 控えを読み直して shelf/items.json を作り直す（5 分ごとの処理の最後に呼ぶ） */
+export async function refreshShelfItems(env: ArchiveEnv): Promise<Item[]> {
+  const built = await buildItems(env);
+  await env.STORE.put(ITEMS_KEY, JSON.stringify({ at: new Date().toISOString(), items: built }));
+  return built;
+}
+
+async function buildItems(env: ArchiveEnv): Promise<Item[]> {
   const jobs = await listJson<JobLike>(env.STORE, "job/");
-  const legacy = await legacyRows(env);
+  const legacy = [...(await listJson<LegacyRec>(env.STORE, "legacy/rec/")).values()];
   const covered = new Set(legacy.map((r) => r.match?.jobRecId ?? "").filter(Boolean));
   const out: Item[] = [];
   for (const [key, j] of jobs) {
