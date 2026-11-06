@@ -10,7 +10,8 @@
  *   share_issue  共有リンクを出す（すでにあればそれを返す）
  *   share_set    共有を止める・期限
  *   meta_set     名前と会の種類（まとめて）
- *   suggest_kai  「その他」の録画に会の種類の案を AI で付ける（少しずつ）
+ *   suggest_kai  「その他」の録画に会の種類の案を AI で付ける（少しずつ。5 分ごとの処理も 6 本ずつ出す）
+ *   labels_edit  ラベルの名前を変える・削除（便 A）
  *
  * 決め（2026-11-02 Naoki OK の便 4）
  *   ・消すかどうかは毎回 Naoki が決める。自動で消す仕組みは作らない
@@ -21,7 +22,7 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { buildArchiveList, readSheetFailures, type ArchiveEnv, type ArchiveListResult, type ArchiveRow } from "./archive";
 import { recKey, type LegacyRec } from "./legacy";
-import { metaSet, shareIssue, shareSet, shelfList, suggestKai } from "./shelf";
+import { labelsEdit, metaSet, shareIssue, shareSet, shelfList, suggestKai } from "./shelf";
 
 export interface SearchQuery {
   date_from?: string;
@@ -166,7 +167,11 @@ export class ArchiveApi extends WorkerEntrypoint<ArchiveEnv> {
     return shareSet(this.env, id, opts ?? {});
   }
 
-  async meta_set(list: { id: string; title?: string; kai?: string }[]): Promise<object> {
+  async labels_edit(opts: { action: "rename" | "delete"; from: string; to?: string }): Promise<object> {
+    return labelsEdit(this.env, opts ?? { action: "delete", from: "" });
+  }
+
+  async meta_set(list: { id: string; title?: string; kai?: string; labels_add?: string[]; labels_remove?: string[] }[]): Promise<object> {
     return metaSet(this.env, Array.isArray(list) ? list : []);
   }
 

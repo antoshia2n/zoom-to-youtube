@@ -1,4 +1,6 @@
 /**
+ * zoom-to-youtube / 第29版（2026-11-06 開発部・録画の棚 便 A：ラベル・会の種類の案を 5 分ごとに 6 本・点検の名前）
+ *
  * zoom-to-youtube / 第28版（2026-11-06 開発部・便 2：録画の棚。マーケくんの「録画」から結びで呼ぶ）
  *   ・ArchiveApi に shelf・share_issue・share_set・meta_set・suggest_kai（src/shelf.ts）
  *   ・古い録画（11/02 より前）にも共有リンクを出せる（share/l/）
@@ -118,7 +120,7 @@ import {
 import { legacyRows, mainVideo, migrateLegacy } from "./legacy";
 import { purgeZoom } from "./purge";
 import { handleShare, syncShares, SHORT_HOST, type YoutubeCandidate } from "./share";
-import { refreshShelfItems } from "./shelf";
+import { refreshShelfItems, suggestKai } from "./shelf";
 
 export { ArchiveApi } from "./api";
 
@@ -2227,6 +2229,9 @@ export default {
           try {
             const n = (await refreshShelfItems(env)).length;
             log.push(`録画の棚：まとめ直した ${n} 本`);
+            // 便 A：「その他」の録画に会の種類の案を少しずつ出す（Naoki は承認だけ）
+            const sg = (await suggestKai(env, 6)) as { looked?: number; suggested?: number; remaining?: number };
+            if (sg.looked) log.push(`録画の棚：会の種類の案 ${sg.suggested ?? 0}／${sg.looked} 本（残り ${sg.remaining ?? 0} 本）`);
           } catch (e) {
             log.push(`録画の棚のまとめ直しに失敗：${e instanceof Error ? e.message : String(e)}`);
           }
