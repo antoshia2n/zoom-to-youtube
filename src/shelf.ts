@@ -319,12 +319,8 @@ export async function shelfList(env: ArchiveEnv): Promise<{ ok: true; total: num
   counts.suggest = rows.filter((r) => r.suggest_kai || r.suggest_name).length;
   counts.issues = rows.filter((r) => r.issues.length).length;
   // 便 A：会の種類の案の進み具合（5 分ごとの処理が少しずつ出す）
-  counts.sug_pending = all.filter((it) => {
-    if ((metas.get(metaKey(it.id))?.kai ?? it.baseKai) !== "その他") return false;
-    const g = sugs.get(sugKey(it.id));
-    return !g || g.why.startsWith(NO_TRANSCRIPT);
-  }).length;
-  const none = all.map((it) => sugs.get(sugKey(it.id))).filter((g, i) => g && !g.kai && (metas.get(metaKey(all[i].id))?.kai ?? all[i].baseKai) === "その他") as Sug[];
+  counts.sug_pending = all.filter((it) => (metas.get(metaKey(it.id))?.kai ?? it.baseKai) === "その他" && !sugs.has(sugKey(it.id))).length;
+  const none = all.map((it) => sugs.get(sugKey(it.id))).filter((g, i) => g && (!g.kai || g.kai === "その他") && (metas.get(metaKey(all[i].id))?.kai ?? all[i].baseKai) === "その他") as Sug[];
   counts.sug_none = none.length;
   counts.sug_none_no_transcript = none.filter((g) => g.why.startsWith(NO_TRANSCRIPT)).length;
   counts.sug_none_title = none.filter((g) => g.why.startsWith("題名からも決められない")).length;
@@ -505,8 +501,7 @@ export async function suggestKai(env: ArchiveEnv, limit = 8): Promise<object> {
   const todo = (await items(env))
     .filter((it) => {
       if ((metas.get(metaKey(it.id))?.kai ?? it.baseKai) !== "その他") return false;
-      const g = sugs.get(sugKey(it.id));
-      return !g || g.why.startsWith(NO_TRANSCRIPT);
+      return !sugs.has(sugKey(it.id));
     })
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   const n = Math.max(1, Math.min(20, Math.floor(limit)));
@@ -520,12 +515,11 @@ export async function suggestKai(env: ArchiveEnv, limit = 8): Promise<object> {
       if (text) {
         const r = await askKai(env, "Zoom の録画の文字起こしを読み、会の種類を 1 つ選ぶ。" + KAI_GUIDE, text);
         sug = { ...r, at: new Date().toISOString() };
-      } else if (title) {
-        // 文字起こしが無い：題名だけで選ぶ。中身を読んだ案より確度が低いので、理由の頭に「題名から：」を付けて区別する
-        const r = await askKai(env, "Zoom の録画の題名だけを見て、会の種類を 1 つ選ぶ。題名から決められなければ その他 にする。" + KAI_GUIDE, `題名：${title}\n長さ：${it.minutes ?? "不明"} 分`);
-        sug = { kai: r.kai, why: (r.kai && r.kai !== "その他" ? FROM_TITLE : "題名からも決められない：") + r.why, at: new Date().toISOString() };
       } else {
-        sug = { kai: null, why: NO_TRANSCRIPT + "（題名も無い）", at: new Date().toISOString() };
+        // 2026-11-06 18:06：題名から読む方式は打ち切った（18 本読み直して案が出たのは 3 本・止める条件に当たった）。
+        // 文字起こしが無い録画は案を出さず、棚の月別・ラベル・詳細の窓で手で整える
+        void title;
+        sug = { kai: null, why: NO_TRANSCRIPT, at: new Date().toISOString() };
       }
     } catch (e) {
       sug = { kai: null, why: `AI が答えなかった：${e instanceof Error ? e.message.slice(0, 120) : String(e)}`, at: new Date().toISOString() };
