@@ -122,6 +122,20 @@ async function shortHostOk(store: R2Bucket): Promise<boolean> {
   return !!(await store.head(SHORT_OK_KEY));
 }
 
+/**
+ * 印がまだ無ければ、v.shia2n.jp を自分で 1 回開いてみる（届けば handleShare が印を置く）。
+ * 短いリンクを配る前は誰も v.shia2n.jp を開かないので、待っていると切り替わらないため。
+ */
+async function probeShortHost(store: R2Bucket): Promise<boolean> {
+  if (await shortHostOk(store)) return true;
+  try {
+    await fetch(`${SHORT_BASE}/`, { signal: AbortSignal.timeout(5000) });
+  } catch {
+    /* まだ住所が無い・届かない。次の回にまた試す */
+  }
+  return shortHostOk(store);
+}
+
 /** 管理シートや画面に出すリンク。v.shia2n.jp が届いていれば短い形、まだなら今までの形 */
 function linkFor(rec: ShareRec, shortOk: boolean): string {
   return shortOk && rec.short ? `${SHORT_BASE}/${rec.short}` : `${SHARE_BASE}/v/${rec.token}`;
@@ -172,7 +186,7 @@ export async function syncShares(
 ): Promise<ShareSyncResult> {
   const res: ShareSyncResult = { created: 0, updated: 0, candidates: [], notes: [], failures: [] };
   const idx = await jobIndex(env.STORE);
-  const shortOk = await shortHostOk(env.STORE);
+  const shortOk = await probeShortHost(env.STORE);
   const writes: { range: string; values: string[][] }[] = [];
 
   for (const r of rows) {
