@@ -19,13 +19,17 @@ import {
   jKey,
   lKey,
   linkFor,
+  mediaFor,
   newToken,
+  playerCues,
   readJson,
   shortHostOk,
+  streamVideo,
   tKey,
   todayJst,
   type ShareRec,
 } from "./share";
+import { parseDescription, playerHtml } from "./player";
 
 export const KAIS = ["セミナー", "打ち合わせ", "個別相談", "Zoom添削", "その他"] as const;
 type Kai = (typeof KAIS)[number];
@@ -556,4 +560,49 @@ export async function labelsEdit(env: ArchiveEnv, opts: { action: "rename" | "de
     changed++;
   }
   return { ok: true, action: opts.action, to: to || null, changed };
+}
+
+/* ------------------------------------------------------------------ */
+/* 会員サイトの中で流す（第30版・便B）                                  */
+/* 共有リンクとは別の道。止める・期限は共有リンクだけに効く。             */
+/* 誰が見てよいかはマーケくん（会員サイト）がログインと権利で確かめてから呼ぶ */
+/* ------------------------------------------------------------------ */
+
+async function memberMedia(env: ArchiveEnv, id: string) {
+  const it = await findItem(env, String(id ?? ""));
+  if (!it || !it.playable) return null;
+  const rec = { jobKey: it.kind === "new" ? jobKeyOf(it.id) : "", ...(it.kind === "legacy" ? { legacyId: it.id } : {}) } as ShareRec;
+  const media = await mediaFor(env, rec);
+  if (!media) return null;
+  const metas = await readJson<Meta>(env.STORE, metaKey(it.id));
+  return { it, media, title: (!it.managed && metas?.title) || it.baseTitle || "録画" };
+}
+
+/** 会員サイトの見る画面（リンクのコピーは出さない）。videoSrc はマーケくんの映像の住所 */
+export async function memberPage(env: ArchiveEnv, id: string, videoSrc: string, title?: string): Promise<{ ok: true; html: string; title: string } | { ok: false; error: string }> {
+  const m = await memberMedia(env, id);
+  if (!m) return { ok: false, error: "not_found" };
+  const { summary, chapters } = parseDescription(m.media.description);
+  const t = String(title || "").trim() || m.title;
+  const html = playerHtml({
+    title: t,
+    date: m.media.date,
+    videoSrc: String(videoSrc || ""),
+    shareUrl: "",
+    key: "m-" + m.it.id.slice(0, 16),
+    summary,
+    chapters,
+    cues: await playerCues(env, m.media.vttKey),
+    hideShare: true,
+  });
+  return { ok: true, html, title: t };
+}
+
+/** 会員サイトの映像（Range つき）。range は届いた Range ヘッダーのまま */
+export async function memberVideo(env: ArchiveEnv, id: string, range?: string | null, method?: string): Promise<Response> {
+  const m = await memberMedia(env, id);
+  if (!m) return new Response("録画が見つかりません。", { status: 404 });
+  const headers: Record<string, string> = {};
+  if (range) headers.range = String(range);
+  return streamVideo(new Request("https://member.local/video", { method: method === "HEAD" ? "HEAD" : "GET", headers }), env, m.media.videoKey);
 }

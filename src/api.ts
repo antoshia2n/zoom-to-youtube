@@ -22,7 +22,7 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { buildArchiveList, readSheetFailures, type ArchiveEnv, type ArchiveListResult, type ArchiveRow } from "./archive";
 import { recKey, type LegacyRec } from "./legacy";
-import { labelsEdit, metaSet, shareIssue, shareSet, shelfList, suggestKai } from "./shelf";
+import { labelsEdit, memberPage, memberVideo, metaSet, shareIssue, shareSet, shelfList, suggestKai } from "./shelf";
 
 export interface SearchQuery {
   date_from?: string;
@@ -173,6 +173,16 @@ export class ArchiveApi extends WorkerEntrypoint<ArchiveEnv> {
 
   async meta_set(list: { id: string; title?: string; kai?: string; labels_add?: string[]; labels_remove?: string[] }[]): Promise<object> {
     return metaSet(this.env, Array.isArray(list) ? list : []);
+  }
+
+  /** 会員サイトの見る画面（第30版）。呼ぶ側がログインと権利を確かめてから */
+  async member_page(id: string, videoSrc: string, title?: string): Promise<object> {
+    return memberPage(this.env, id, videoSrc, title);
+  }
+
+  /** 会員サイトの映像（Range つき）。呼ぶ側がログインと権利を確かめてから */
+  async member_video(id: string, range?: string | null, method?: string): Promise<Response> {
+    return memberVideo(this.env, id, range, method);
   }
 
   async suggest_kai(limit?: number): Promise<object> {

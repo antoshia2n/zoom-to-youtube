@@ -131,6 +131,8 @@ export interface PlayerPage {
   summary: string;
   chapters: PlayerChapter[];
   cues: PlayerCue[];
+  /** 会員サイトの中で流すとき：リンクのコピーを出さない（外に住所を出さない） */
+  hideShare?: boolean;
 }
 
 export function playerHtml(p: PlayerPage): string {
@@ -151,7 +153,7 @@ export function playerHtml(p: PlayerPage): string {
       <h1>${esc(p.title)}</h1>
       <p class="meta">${p.date ? `収録日 ${esc(p.date)}・` : ""}<span id="dur">--:--</span></p>
     </div>
-    <button class="btn" type="button" id="copyAt">今の時間のリンクをコピー</button>
+    ${p.hideShare ? "" : `<button class="btn" type="button" id="copyAt">今の時間のリンクをコピー</button>`}
   </div>
   <div class="layout${hasT || hasC ? "" : " solo"}">
     <section class="a-play" aria-label="再生">
@@ -371,6 +373,6 @@ else if(e.key==="ArrowLeft"&&e.target===document.body)v.currentTime-=10;
 else if(e.key===">"||e.key==="."){const i=SPEEDS.indexOf(speed);if(i<SPEEDS.length-1)setSpeed(SPEEDS[i+1],true)}
 else if(e.key==="<"||e.key===","){const i=SPEEDS.indexOf(speed);if(i>0)setSpeed(SPEEDS[i-1],true)}
 else if((e.key==="c"||e.key==="C")&&$("ccBtn")){setCC(!cc);toast(cc?"字幕を出しました":"字幕を消しました")}});
-$("copyAt").onclick=async()=>{const link=P.share+"#t"+Math.floor(v.currentTime);try{await navigator.clipboard.writeText(link);toast(fmt(v.currentTime)+" から始まるリンクをコピーしました")}catch(e){toast(link)}};
+if($("copyAt"))$("copyAt").onclick=async()=>{const link=P.share+"#t"+Math.floor(v.currentTime);try{await navigator.clipboard.writeText(link);toast(fmt(v.currentTime)+" から始まるリンクをコピーしました")}catch(e){toast(link)}};
 renderLines("");setCC(cc);tab(store.get("rec:tab")==="C"?"C":"T");syncPlay();
 `;
