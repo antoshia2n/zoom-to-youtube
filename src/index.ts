@@ -1,4 +1,11 @@
 /**
+ * zoom-to-youtube / 第27版（2026-11-06 開発部・便 1：短いリンク v.shia2n.jp と、録画を見る画面）
+ *
+ * 第27版で足したこと（作る前の 1 枚とデモに Naoki OK 2026-11-06 12:43）
+ *   ・共有リンクに 7 文字の短い番号を付ける。v.shia2n.jp に一度届いたあとは、管理シートの T 列に短いリンクを書く
+ *   ・見る画面（player.ts）：速度・続きから・文字起こし・字幕・目次・今の時間のリンク。話者の名前は伏せる
+ *   ・v.shia2n.jp では録画の画面だけを返す（管理の口は開かない）
+ *
  * zoom-to-youtube / 第25版（2026-11-03 開発部・管理シートの E タイトルで R2・YouTube の名前をそろえる）
  *
  * 第25版で足したこと（Naoki OK 2026-11-03 22:48）
@@ -105,7 +112,7 @@ import {
 } from "./archive";
 import { legacyRows, mainVideo, migrateLegacy } from "./legacy";
 import { purgeZoom } from "./purge";
-import { handleShare, syncShares, type YoutubeCandidate } from "./share";
+import { handleShare, syncShares, SHORT_HOST, type YoutubeCandidate } from "./share";
 
 export { ArchiveApi } from "./api";
 
@@ -2099,6 +2106,11 @@ const TERMS_TEXT = [
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    // 第27版：短いリンクの住所（v.shia2n.jp）は録画の画面だけ。管理の口（/run など）はここでは開かない
+    if (url.hostname === SHORT_HOST) {
+      return (await handleShare(request, env)) ?? text("見つかりません", 404);
+    }
 
     // 第26版：自前の共有リンク（/v/<番号>）
     if (url.pathname.startsWith("/v/")) {
