@@ -56,6 +56,14 @@ interface Meta {
   kai?: Kai;
   /** 便 A（2026-11-06）：ラベル（自由に付ける札・複数） */
   labels?: string[];
+  /** 第33版（2026-11-12）：出し先のスイッチ。無ければ会の種類と収録日から決める（routeDefault） */
+  yt?: boolean;
+  site?: boolean;
+  /** 入れるコース（無ければ会の種類ごとの決まりのコース） */
+  course?: string;
+  /** マーケくんが会員サイトに入れ、知らせを送り終えた時刻と、そのコンテンツ */
+  routeDoneAt?: string;
+  routeContent?: string;
   updatedAt: string;
 }
 
@@ -96,6 +104,131 @@ export interface ShelfRow {
   suggest_kai: { kai: string; why: string } | null;
   suggest_name: string | null;
   issues: string[];
+  /** 第33版：YouTube の住所（限定公開。シアニン用の画面とマーケくんの中だけで使う） */
+  youtube_url: string | null;
+  /** 第33版：出し先のスイッチ */
+  route: RouteView;
+}
+
+export interface RouteView {
+  youtube: boolean;
+  site: boolean;
+  /** YouTube へ上げられる録画か（新しい録画だけ。古い録画・手で上げたものは上げない） */
+  youtube_possible: boolean;
+  /** スイッチを手で変えていない（会の種類と収録日から決めた値） */
+  auto: boolean;
+  course_id: string | null;
+  done_at: string | null;
+  content_id: string | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* 出し先のスイッチ（第33版・2026-11-12 Naoki OK）                      */
+/*   ・この日以降に録った録画は、会の種類で最初の値が決まる                */
+/*     セミナー → YouTube も会員サイトもオン／ほかはオフ                   */
+/*   ・それより前の録画はオフ（古い録画が一斉に YouTube へ上がらないため）  */
+/*   ・会員サイトへ入れるのはマーケくん（1 時間ごと）。ここは値を持つだけ   */
+/* ------------------------------------------------------------------ */
+
+export const ROUTE_FROM = "2026-11-12";
+const ROUTE_KEY = "shelf/route.json";
+
+interface RouteConfig {
+  /** 会の種類ごとの入れ先のコース（会員サイトのコースの id） */
+  courses: Partial<Record<Kai, string>>;
+  updatedAt?: string;
+}
+
+export function routeDefault(kai: string, date: string): boolean {
+  return kai === "セミナー" && !!date && date >= ROUTE_FROM;
+}
+
+export async function routeConfig(env: ArchiveEnv): Promise<{ ok: true; from: string; courses: Partial<Record<Kai, string>> }> {
+  const c = await readJson<RouteConfig>(env.STORE, ROUTE_KEY);
+  return { ok: true, from: ROUTE_FROM, courses: c?.courses ?? {} };
+}
+
+export async function routeConfigSet(env: ArchiveEnv, courses: Record<string, string | null>): Promise<object> {
+  const cur = (await readJson<RouteConfig>(env.STORE, ROUTE_KEY)) ?? { courses: {} };
+  for (const [k, v] of Object.entries(courses ?? {})) {
+    if (!(KAIS as readonly string[]).includes(k)) return { ok: false, error: "bad_kai" };
+    const id = String(v ?? "").trim();
+    if (id && !/^[A-Za-z0-9-]{8,64}$/.test(id)) return { ok: false, error: "bad_course" };
+    if (id) cur.courses[k as Kai] = id;
+    else delete cur.courses[k as Kai];
+  }
+  cur.updatedAt = new Date().toISOString();
+  await env.STORE.put(ROUTE_KEY, JSON.stringify(cur));
+  return { ok: true, courses: cur.courses };
+}
+
+function routeView(it: { kind: string; date: string; youtube: boolean }, kai: string, meta: Meta | undefined): RouteView {
+  const def = routeDefault(kai, it.date);
+  const possible = it.kind === "new" || it.youtube;
+  return {
+    youtube: possible && (meta?.yt ?? def),
+    site: meta?.site ?? def,
+    youtube_possible: possible,
+    auto: meta?.yt === undefined && meta?.site === undefined,
+    course_id: meta?.course ?? null,
+    done_at: meta?.routeDoneAt ?? null,
+    content_id: meta?.routeContent ?? null,
+  };
+}
+
+/** スイッチを変える。route_reset で手の値を外し、会の種類からの値に戻す */
+export async function routeSet(
+  env: ArchiveEnv,
+  id: string,
+  opts: { youtube?: boolean; site?: boolean; course_id?: string | null; reset?: boolean },
+): Promise<object> {
+  const it = await findItem(env, String(id ?? ""));
+  if (!it) return { ok: false, error: "not_found" };
+  const cur = (await readJson<Meta>(env.STORE, metaKey(it.id))) ?? { updatedAt: "" };
+  if (opts.reset) {
+    delete cur.yt;
+    delete cur.site;
+  }
+  if (typeof opts.youtube === "boolean") {
+    if (opts.youtube && it.kind !== "new" && !it.youtube) return { ok: false, error: "youtube_not_possible", note: "YouTube へ上げられるのは 11/02 以降に Zoom で録った録画だけ" };
+    cur.yt = opts.youtube;
+  }
+  if (typeof opts.site === "boolean") cur.site = opts.site;
+  if (opts.course_id !== undefined) {
+    const c = String(opts.course_id ?? "").trim();
+    if (c && !/^[A-Za-z0-9-]{8,64}$/.test(c)) return { ok: false, error: "bad_course" };
+    cur.course = c || undefined;
+  }
+  cur.updatedAt = new Date().toISOString();
+  await env.STORE.put(metaKey(it.id), JSON.stringify(cur));
+  return { ok: true, route: routeView(it, cur.kai ?? it.baseKai, cur) };
+}
+
+/** マーケくんが会員サイトに入れ、知らせを送り終えたら呼ぶ（同じ録画を二度入れないため） */
+export async function routeDone(env: ArchiveEnv, id: string, contentId: string): Promise<object> {
+  const it = await findItem(env, String(id ?? ""));
+  if (!it) return { ok: false, error: "not_found" };
+  const cur = (await readJson<Meta>(env.STORE, metaKey(it.id))) ?? { updatedAt: "" };
+  cur.routeDoneAt = new Date().toISOString();
+  cur.routeContent = String(contentId ?? "").slice(0, 64) || undefined;
+  cur.updatedAt = cur.routeDoneAt;
+  await env.STORE.put(metaKey(it.id), JSON.stringify(cur));
+  return { ok: true, done_at: cur.routeDoneAt };
+}
+
+/** YouTube へ上げる候補（棚のスイッチがオンで、まだ上がっていない新しい録画） */
+export async function shelfYoutubeCandidates(env: ArchiveEnv): Promise<{ jobKey: string; title: string; label: string }[]> {
+  const all = await items(env);
+  const metas = await listJson<Meta>(env.STORE, "shelf/meta/");
+  const out: { jobKey: string; title: string; label: string }[] = [];
+  for (const it of all) {
+    if (it.kind !== "new" || it.youtube || !it.playable) continue;
+    const meta = metas.get(metaKey(it.id));
+    const kai = meta?.kai ?? it.baseKai;
+    if (!routeView(it, kai, meta).youtube) continue;
+    out.push({ jobKey: jobKeyOf(it.id), title: it.baseTitle || `${it.date}｜${kai}｜録画`, label: "録画の棚のスイッチ" });
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ */
@@ -182,6 +315,8 @@ interface Item {
   minutes: number | null;
   sizeGb: number | null;
   youtube: boolean;
+  /** 第33版：YouTube の住所 */
+  youtubeUrl?: string;
   /** 共有の控えを引く置き場（新しい録画は share/j/、古い録画は share/l/） */
   shareIndex: string;
   /** 結び付いた台帳の控え（古い録画のとき）。こちらに共有があればそれを使う */
@@ -232,6 +367,7 @@ async function buildItems(env: ArchiveEnv): Promise<Item[]> {
       minutes: null,
       sizeGb: j.size ? Math.round((j.size / 1073741824) * 100) / 100 : null,
       youtube: !!j.youtubeUrl,
+      youtubeUrl: j.youtubeUrl,
       shareIndex: jKey(key),
       playable: !!j.r2Key,
     });
@@ -248,6 +384,7 @@ async function buildItems(env: ArchiveEnv): Promise<Item[]> {
       minutes: r.durationSec ? Math.round(r.durationSec / 60) : null,
       sizeGb: Math.round((r.totalSize / 1073741824) * 100) / 100,
       youtube: !!r.match?.youtubeUrl,
+      youtubeUrl: r.match?.youtubeUrl,
       shareIndex: lKey(r.uuid),
       jobShareIndex: r.match?.jobRecId ? jKey(jobKeyOf(r.match.jobRecId)) : undefined,
       playable: !!mainVideo(r.files)?.r2Key,
@@ -348,6 +485,8 @@ export async function shelfList(env: ArchiveEnv): Promise<{ ok: true; total: num
       // 日付が合わないものは中身が別の回の見込みなので、そろえる案は出さず点検に回す
       suggest_name: it.managed || issues.includes("名前の日付と収録日が合わない") ? null : canonicalName(it.date, kai, title),
       issues,
+      youtube_url: it.youtubeUrl ?? null,
+      route: routeView(it, kai, meta),
     });
   });
   // 同じ名前（空白と全角半角の違いは同じとみなす）が 2 本以上あるものに印を付ける

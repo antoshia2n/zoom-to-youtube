@@ -24,7 +24,7 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { buildArchiveList, readSheetFailures, type ArchiveEnv, type ArchiveListResult, type ArchiveRow } from "./archive";
 import { recKey, type LegacyRec } from "./legacy";
-import { labelsEdit, memberData, memberInfo, memberPage, memberStream, memberVideo, metaSet, refreshShelfItems, shareIssue, shareSet, shelfList, suggestKai } from "./shelf";
+import { labelsEdit, memberData, memberInfo, memberPage, memberStream, memberVideo, metaSet, refreshShelfItems, routeConfig, routeConfigSet, routeDone, routeSet, shareIssue, shareSet, shelfList, suggestKai } from "./shelf";
 import { uploadAbort, uploadComplete, uploadPart, uploadStart } from "./upload";
 
 export interface SearchQuery {
@@ -168,6 +168,25 @@ export class ArchiveApi extends WorkerEntrypoint<ArchiveEnv> {
 
   async share_set(id: string, opts: { stopped?: boolean; expires?: string | null }): Promise<object> {
     return shareSet(this.env, id, opts ?? {});
+  }
+
+  /** 第33版：出し先のスイッチ（YouTube・会員サイト・入れるコース） */
+  async route_set(id: string, opts: { youtube?: boolean; site?: boolean; course_id?: string | null; reset?: boolean }): Promise<object> {
+    return routeSet(this.env, id, opts ?? {});
+  }
+
+  /** 第33版：会の種類ごとの入れ先のコース */
+  async route_config(): Promise<object> {
+    return routeConfig(this.env);
+  }
+
+  async route_config_set(courses: Record<string, string | null>): Promise<object> {
+    return routeConfigSet(this.env, courses ?? {});
+  }
+
+  /** 第33版：マーケくんが会員サイトに入れ終えた印 */
+  async route_done(id: string, contentId: string): Promise<object> {
+    return routeDone(this.env, id, contentId);
   }
 
   async labels_edit(opts: { action: "rename" | "delete"; from: string; to?: string }): Promise<object> {
