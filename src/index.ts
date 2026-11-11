@@ -1,5 +1,7 @@
 /**
- * zoom-to-youtube / 第31版（2026-11-06 開発部・便 B2：member_data / member_stream・点検に同じ名前）
+ * zoom-to-youtube / 第33版（2026-11-12 開発部・出し先のスイッチ：録画の棚で YouTube・会員サイトを録画ごとに入り切り。
+ *   セミナーは最初からオン。棚でオンにした録画も R2 から YouTube（限定公開）へ上げる。会員サイトへ入れるのはマーケくん）
+ * 第31版（2026-11-06 開発部・便 B2：member_data / member_stream・点検に同じ名前）
  * 第30版（2026-11-06 開発部・便 B：会員サイトの中で流す member_page / member_video。デモに Naoki OK 18:23）
  * 第29版（2026-11-06 開発部・録画の棚 便 A：ラベル・会の種類の案を 5 分ごとに 6 本・点検の名前）
  *
@@ -122,7 +124,7 @@ import {
 import { legacyRows, mainVideo, migrateLegacy } from "./legacy";
 import { purgeZoom } from "./purge";
 import { handleShare, syncShares, SHORT_HOST, type YoutubeCandidate } from "./share";
-import { refreshShelfItems, suggestKai } from "./shelf";
+import { refreshShelfItems, shelfYoutubeCandidates, suggestKai } from "./shelf";
 
 export { ArchiveApi } from "./api";
 
@@ -1566,7 +1568,11 @@ async function runAll(env: Env, out: (s: string) => void, beat: () => Promise<vo
         out(`共有リンク：作った ${sh.created} 件／止める・期限を写した ${sh.updated} 件／YouTube へ上げる候補 ${sh.candidates.length} 件`);
         notes.push(...sh.notes);
         failures.push(...sh.failures);
-        const up = await uploadChosenToYoutube(env, ws.token, sid, sh.candidates, started, out, beat);
+        // 第33版：録画の棚のスイッチ（マーケくんの「録画」）でオンにした録画も上げる。同じ録画は 1 度だけ
+        const seen = new Set(sh.candidates.map((c) => c.jobKey));
+        const fromShelf = (await shelfYoutubeCandidates(env)).filter((c) => !seen.has(c.jobKey));
+        if (fromShelf.length) out(`録画の棚のスイッチ：YouTube へ上げる候補 ${fromShelf.length} 件`);
+        const up = await uploadChosenToYoutube(env, ws.token, sid, [...sh.candidates, ...fromShelf], started, out, beat);
         notes.push(...up.notes);
         failures.push(...up.failures);
       } catch (e) {
