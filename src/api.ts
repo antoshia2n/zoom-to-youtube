@@ -25,6 +25,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 import { buildArchiveList, readSheetFailures, type ArchiveEnv, type ArchiveListResult, type ArchiveRow } from "./archive";
 import { recKey, type LegacyRec } from "./legacy";
 import { labelsEdit, memberData, memberInfo, memberPage, memberStream, memberVideo, metaSet, refreshShelfItems, routeConfig, routeConfigSet, routeDone, routeSet, shareIssue, shareSet, shelfList, suggestKai } from "./shelf";
+import { saveContentImages, type ContentDriveEnv, type SaveContentImagesInput } from "./content-drive";
 import { uploadAbort, uploadComplete, uploadPart, uploadStart } from "./upload";
 
 export interface SearchQuery {
@@ -248,6 +249,11 @@ export class ArchiveApi extends WorkerEntrypoint<ArchiveEnv> {
 
   async suggest_kai(limit?: number): Promise<object> {
     return suggestKai(this.env, limit ?? 8);
+  }
+
+  /** 第27版：コンテンツくんの依頼の画像を、ドライブの「コンテンツくん/月/日付_題/種類/」へ写す（shia2n-mcp の content_os__put_result から呼ぶ） */
+  async saveContentImages(input: SaveContentImagesInput): Promise<object> {
+    return saveContentImages(this.env as unknown as ContentDriveEnv, input);
   }
 
   async remove(recId: string, confirm: boolean): Promise<object> {
