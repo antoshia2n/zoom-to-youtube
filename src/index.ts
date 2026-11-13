@@ -1,5 +1,6 @@
 /**
- * zoom-to-youtube / 第34版（2026-11-13 開発部・マーケくんの「録画」で、管理シートに行がある録画の名前も変えられる。E 列へ書き戻す）
+ * zoom-to-youtube / 第35版（2026-11-13 開発部・実績の便 2：ドライブの「実績の受け箱」をマーケくんの「実績」へ渡す。workspace の許可に drive.readonly を足した）
+ * 第34版（2026-11-13 開発部・マーケくんの「録画」で、管理シートに行がある録画の名前も変えられる。E 列へ書き戻す）
  * 第33版（2026-11-12 開発部・出し先のスイッチ：録画の棚で YouTube・会員サイトを録画ごとに入り切り。
  *   セミナーは最初からオン。棚でオンにした録画も R2 から YouTube（限定公開）へ上げる。会員サイトへ入れるのはマーケくん）
  * 第31版（2026-11-06 開発部・便 B2：member_data / member_stream・点検に同じ名前）
@@ -213,6 +214,8 @@ const PERMITS = {
     key: "auth/workspace.json",
     scopes: [
       "https://www.googleapis.com/auth/drive.file",
+      // 第35版（実績の便 2）：Naoki が手で「実績の受け箱」に入れたスクショを読むため（読むだけ。動かさない・消さない）
+      "https://www.googleapis.com/auth/drive.readonly",
       "https://www.googleapis.com/auth/spreadsheets",
       // 第17版：処理の結果を本人あてにメールで知らせるため（送るだけ。読む権限は無い）
       "https://www.googleapis.com/auth/gmail.send",

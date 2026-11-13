@@ -27,6 +27,7 @@ import { recKey, type LegacyRec } from "./legacy";
 import { labelsEdit, memberData, memberInfo, memberPage, memberStream, memberVideo, metaSet, refreshShelfItems, routeConfig, routeConfigSet, routeDone, routeSet, shareIssue, shareSet, shelfList, suggestKai } from "./shelf";
 import { saveContentImages, type ContentDriveEnv, type SaveContentImagesInput } from "./content-drive";
 import { uploadAbort, uploadComplete, uploadPart, uploadStart } from "./upload";
+import { inboxDone, inboxStatus, inboxTake } from "./results-drive";
 
 export interface SearchQuery {
   date_from?: string;
@@ -192,6 +193,17 @@ export class ArchiveApi extends WorkerEntrypoint<ArchiveEnv> {
 
   async labels_edit(opts: { action: "rename" | "delete"; from: string; to?: string }): Promise<object> {
     return labelsEdit(this.env, opts ?? { action: "delete", from: "" });
+  }
+
+  // 第35版（実績の便 2）：ドライブの「実績の受け箱」をマーケくんの「実績」へ渡す
+  async results_inbox_status(): Promise<object> {
+    return inboxStatus(this.env as never);
+  }
+  async results_inbox_take(limit?: number): Promise<object> {
+    return inboxTake(this.env as never, Number(limit) || 5);
+  }
+  async results_inbox_done(ids: string[]): Promise<object> {
+    return inboxDone(this.env as never, Array.isArray(ids) ? ids.map(String) : []);
   }
 
   async meta_set(list: { id: string; title?: string; kai?: string; labels_add?: string[]; labels_remove?: string[] }[]): Promise<object> {
