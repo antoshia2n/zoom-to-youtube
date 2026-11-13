@@ -569,9 +569,27 @@ async function knownLabels(env: ArchiveEnv): Promise<string[]> {
   return [...new Set([...metas.values()].flatMap((m) => m.labels ?? []))];
 }
 
+/**
+ * 第34版（2026-11-13 Naoki「録画の名前を変えたい」→ 作る前の 1 枚に OK 15:14）：
+ * 管理シートに行がある録画も、マーケくんの「録画」で名前を変えられる。正本はシートの E 列のままで、そこへ書き戻す。
+ * R2・YouTube・保管の記録は、5 分ごとの処理（rename.ts の syncNames）が E 列を読んでそろえる。
+ * writeSheetTitle は index.ts から差し込む（Google の鍵まわりを shelf.ts に持たないため）。返り値は失敗の理由か null
+ */
+export type WriteSheetTitle = (jobKey: string, title: string) => Promise<string | null>;
+
+async function managedJobKey(env: ArchiveEnv, it: Item): Promise<string | null> {
+  if (it.kind === "new") return jobKeyOf(it.id);
+  if (it.kind === "legacy") {
+    const r = await readJson<LegacyRec>(env.STORE, recKey(it.id));
+    return r?.match?.jobRecId ? jobKeyOf(r.match.jobRecId) : null;
+  }
+  return null;
+}
+
 export async function metaSet(
   env: ArchiveEnv,
   list: { id: string; title?: string; kai?: string; labels_add?: string[]; labels_remove?: string[] }[],
+  writeSheetTitle?: WriteSheetTitle,
 ): Promise<object> {
   const all = new Map((await items(env)).map((x) => [x.id, x]));
   const known = await knownLabels(env);
@@ -588,13 +606,25 @@ export async function metaSet(
       continue;
     }
     const title = (m.title ?? "").replace(/[\r\n\t]+/g, " ").trim().slice(0, 120);
+    let sheetTitle = false;
     if (m.title !== undefined && it.managed) {
-      refused.push({ id: it.id, why: "管理シートに行がある録画の名前は、シートの E 列で変える" });
-      continue;
+      if (!title) {
+        refused.push({ id: it.id, why: "名前を空にはできません" });
+        continue;
+      }
+      if (title !== it.baseTitle) {
+        const jk = await managedJobKey(env, it);
+        const why = !writeSheetTitle ? "管理シートへ書く口がありません" : !jk ? "管理シートの行が見つかりません" : await writeSheetTitle(jk, title);
+        if (why) {
+          refused.push({ id: it.id, why: `管理シートの E 列へ書けませんでした（${why}）` });
+          continue;
+        }
+        sheetTitle = true;
+      }
     }
     const cur = (await readJson<Meta>(env.STORE, metaKey(it.id))) ?? { updatedAt: "" };
     if (m.kai !== undefined) cur.kai = m.kai as Kai;
-    if (m.title !== undefined) cur.title = title || undefined;
+    if (m.title !== undefined && !it.managed) cur.title = title || undefined;
     if (Array.isArray(m.labels_add) || Array.isArray(m.labels_remove)) {
       let ls = cur.labels ?? [];
       for (const raw of (m.labels_add ?? []).slice(0, 20)) {
@@ -614,6 +644,16 @@ export async function metaSet(
     if (rec && m.title !== undefined && title && rec.title !== title) {
       rec.title = title;
       await env.STORE.put(tKey(rec.token), JSON.stringify(rec));
+    }
+    // 管理シートへ書いた名前は、5 分ごとの処理を待たずに棚の一覧へも出す（処理が作り直すと同じ名前になる）
+    if (sheetTitle) {
+      const c = await readJson<{ at: string; items: Item[] }>(env.STORE, ITEMS_KEY);
+      const hit = c?.items.find((x) => x.id === it.id);
+      if (c && hit) {
+        hit.baseTitle = title;
+        await env.STORE.put(ITEMS_KEY, JSON.stringify(c));
+      }
+      it.baseTitle = title;
     }
     done.push(it.id);
   }

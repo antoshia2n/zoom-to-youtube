@@ -1,5 +1,6 @@
 /**
- * zoom-to-youtube / 第33版（2026-11-12 開発部・出し先のスイッチ：録画の棚で YouTube・会員サイトを録画ごとに入り切り。
+ * zoom-to-youtube / 第34版（2026-11-13 開発部・マーケくんの「録画」で、管理シートに行がある録画の名前も変えられる。E 列へ書き戻す）
+ * 第33版（2026-11-12 開発部・出し先のスイッチ：録画の棚で YouTube・会員サイトを録画ごとに入り切り。
  *   セミナーは最初からオン。棚でオンにした録画も R2 から YouTube（限定公開）へ上げる。会員サイトへ入れるのはマーケくん）
  * 第31版（2026-11-06 開発部・便 B2：member_data / member_stream・点検に同じ名前）
  * 第30版（2026-11-06 開発部・便 B：会員サイトの中で流す member_page / member_video。デモに Naoki OK 18:23）
@@ -955,6 +956,29 @@ async function sendVideo(
 /* ================================================================== */
 /* シート                                                              */
 /* ================================================================== */
+
+/**
+ * 第34版（2026-11-13）：マーケくんの「録画」で直した名前を、管理シートの E 列（名前の正本）へ書き戻す。
+ * 録画の控え（job/）→ 台帳の共有リンク → 台帳の処理ID（A 列）→ 管理シートの O 列 の順にたどる（rename.ts の逆向き）。
+ * 返り値は失敗の理由か null。R2・YouTube は次の 5 分ごとの処理（syncNames）がそろえる
+ */
+export async function writeManagedTitle(env: Env, jobKey: string, title: string): Promise<string | null> {
+  const o = await env.STORE.get(jobKey);
+  if (!o) return "録画の控えが見つかりません";
+  const share = String((JSON.parse(await o.text()) as { share?: string }).share ?? "").trim();
+  if (!share) return "録画の控えに共有リンクがありません";
+  const ws = await accessToken(env, "workspace");
+  if (!ws.ok) return ws.why;
+  const sid = await sheetId(env);
+  if (!sid) return "受け付けの台帳がありません";
+  const sheet = await manageRowsForNames(env, ws.token, sid);
+  if (!sheet) return "管理シートの設定がありません";
+  const ids = new Set([...sheet.shareById].filter(([, sh]) => sh === share).map(([id]) => id));
+  const rows = sheet.rows.filter((r) => ids.has((r.values[14] ?? "").trim()));
+  if (rows.length === 0) return "管理シートにこの録画の行がありません";
+  await sheet.write(rows.map((r) => ({ range: `${r.tab}!E${r.rowNo}`, values: [[title]] })));
+  return null;
+}
 
 async function sheetId(env: Env): Promise<string | null> {
   const o = await env.STORE.get(SHEET_KEY);

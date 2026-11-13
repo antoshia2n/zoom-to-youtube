@@ -195,7 +195,9 @@ export class ArchiveApi extends WorkerEntrypoint<ArchiveEnv> {
   }
 
   async meta_set(list: { id: string; title?: string; kai?: string; labels_add?: string[]; labels_remove?: string[] }[]): Promise<object> {
-    return metaSet(this.env, Array.isArray(list) ? list : []);
+    // 第34版：管理シートに行がある録画の名前は、シートの E 列へ書き戻す（鍵まわりは index.ts）
+    const { writeManagedTitle } = await import("./index");
+    return metaSet(this.env, Array.isArray(list) ? list : [], (jobKey, title) => writeManagedTitle(this.env as never, jobKey, title));
   }
 
   /** 会員サイトの見る画面（第30版）。呼ぶ側がログインと権利を確かめてから */
