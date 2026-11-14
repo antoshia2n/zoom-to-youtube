@@ -9,6 +9,7 @@
  *   字の無い絵・素材・描いた PNG の住所は、どれも外から読める https（shia2n-mcp の /slides/img/ と Supabase の公開の置き場）。
  * - 書く許可は、ドライブへ録画を置くのと同じ「ふだんの Google アカウント」の許可（drive.file）。
  *   Google スライドの道具は drive.file で、この仕組みが作ったファイルを読み書きできる。許可のやり直しは要らない。
+ * - 第37版（2026-11-14）：枚の番号を p001 → slide_001 に（Google の決まりで 5 字以上・1 回目の書き出しで断られた）。途中で断られたら作りかけはゴミ箱へ
  * - 置き場はドライブの「スライド」フォルダ（この仕組みが作ったもの）。書き出すたびに新しいファイルを作り、前のものは消さない。
  */
 import { findOrMakeFolder, g, token, type ContentDriveEnv } from "./content-drive";
@@ -116,10 +117,15 @@ export async function createSlidesDeck(env: ContentDriveEnv, input: CreateSlides
     });
     const pid = made.presentationId;
     const blank = (made.slides || []).map(s => s.objectId);
-    // 5 枚ずつ送る（1 回の指示が多すぎると断られるため）
-    for (let i = 0; i < slides.length; i += 5) {
-      const requests = slides.slice(i, i + 5).flatMap((s, k) => slideRequests(`p${String(i + k + 1).padStart(3, "0")}`, s.items || []));
-      await g(tk, `https://slides.googleapis.com/v1/presentations/${pid}:batchUpdate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ requests }) });
+    // 5 枚ずつ送る（1 回の指示が多すぎると断られるため）。途中で断られたら、作りかけのファイルはゴミ箱へ移す（第37版）
+    try {
+      for (let i = 0; i < slides.length; i += 5) {
+        const requests = slides.slice(i, i + 5).flatMap((s, k) => slideRequests(`slide_${String(i + k + 1).padStart(3, "0")}`, s.items || []));
+        await g(tk, `https://slides.googleapis.com/v1/presentations/${pid}:batchUpdate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ requests }) });
+      }
+    } catch (e) {
+      await g(tk, `https://www.googleapis.com/drive/v3/files/${pid}?fields=id`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ trashed: true }) }).catch(() => undefined);
+      throw e;
     }
     if (blank.length) {
       await g(tk, `https://slides.googleapis.com/v1/presentations/${pid}:batchUpdate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ requests: blank.map(objectId => ({ deleteObject: { objectId } })) }) });
