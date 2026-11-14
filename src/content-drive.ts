@@ -46,7 +46,7 @@ export type SaveContentImagesResult =
 const safe = (s: string, n = 60) =>
   String(s || "").replace(/[\\/:*?"<>|\n\r\t]/g, "").replace(/\s+/g, " ").trim().slice(0, n) || "無題";
 
-async function token(env: ContentDriveEnv): Promise<string> {
+export async function token(env: ContentDriveEnv): Promise<string> {
   const obj = await env.STORE.get("auth/workspace.json");
   if (!obj) throw new Error("ドライブへ保存する許可の控えがありません（/oauth/start から通す）");
   const saved = JSON.parse(await obj.text()) as { refresh_token: string };
@@ -67,7 +67,7 @@ async function token(env: ContentDriveEnv): Promise<string> {
   return b.access_token;
 }
 
-async function g<T>(tk: string, url: string, init: RequestInit = {}): Promise<T> {
+export async function g<T>(tk: string, url: string, init: RequestInit = {}): Promise<T> {
   const h = new Headers(init.headers);
   h.set("authorization", `Bearer ${tk}`);
   const res = await fetch(url, { ...init, headers: h });
@@ -78,7 +78,7 @@ async function g<T>(tk: string, url: string, init: RequestInit = {}): Promise<T>
 
 const qs = (s: string) => s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 
-async function findOrMakeFolder(tk: string, name: string, parent: string | null): Promise<string> {
+export async function findOrMakeFolder(tk: string, name: string, parent: string | null): Promise<string> {
   const q = [`name = '${qs(name)}'`, `mimeType = '${FOLDER_MIME}'`, "trashed = false", parent ? `'${parent}' in parents` : "'root' in parents"].join(" and ");
   const found = await g<{ files?: { id: string }[] }>(tk, `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)&pageSize=1`);
   if (found.files?.[0]) return found.files[0].id;

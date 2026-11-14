@@ -12,6 +12,7 @@
  *   meta_set     名前と会の種類（まとめて）
  *   suggest_kai  「その他」の録画に会の種類の案を AI で付ける（少しずつ。5 分ごとの処理も 6 本ずつ出す）
  *   labels_edit  ラベルの名前を変える・削除（便 A）
+ *   第36版（2026-11-14 スライド制作 便4b）createSlidesDeck  スライドの台帳の配置表から Google スライドを作る（src/slides-gslides.ts）
  *   第32版（便 C 手で上げる・2026-11-06 Naoki OK 19:47）
  *   upload_start・upload_part・upload_complete・upload_abort  動画・音声を 16MB ずつ R2 へ入れ、棚に「アップロード」で並べる（src/upload.ts）
  *
@@ -28,6 +29,7 @@ import { labelsEdit, memberData, memberInfo, memberPage, memberStream, memberVid
 import { saveContentImages, type ContentDriveEnv, type SaveContentImagesInput } from "./content-drive";
 import { uploadAbort, uploadComplete, uploadPart, uploadStart } from "./upload";
 import { inboxDone, inboxStatus, inboxTake } from "./results-drive";
+import { createSlidesDeck, type CreateSlidesDeckInput } from "./slides-gslides";
 
 export interface SearchQuery {
   date_from?: string;
@@ -268,6 +270,11 @@ export class ArchiveApi extends WorkerEntrypoint<ArchiveEnv> {
   /** 第27版：コンテンツくんの依頼の画像を、ドライブの「コンテンツくん/月/日付_題/種類/」へ写す（shia2n-mcp の content_os__put_result から呼ぶ） */
   async saveContentImages(input: SaveContentImagesInput): Promise<object> {
     return saveContentImages(this.env as unknown as ContentDriveEnv, input);
+  }
+
+  /** 第36版：スライドの台帳の配置表から Google スライドを作る（shia2n-mcp の slides__export_gslides から呼ぶ） */
+  async createSlidesDeck(input: CreateSlidesDeckInput): Promise<object> {
+    return createSlidesDeck(this.env as unknown as ContentDriveEnv, input);
   }
 
   async remove(recId: string, confirm: boolean): Promise<object> {
