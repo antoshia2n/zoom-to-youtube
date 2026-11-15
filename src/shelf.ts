@@ -74,7 +74,11 @@ export interface Thumb {
   sub: string;
   by: "ai" | "hand" | "title";
   at: string;
+  /** 作り方の版。THUMB_V より古い AI の言葉は作り直す（第40版：長すぎる補足を途中で切っていた・大げさな言葉） */
+  v?: number;
 }
+
+const THUMB_V = 2;
 
 export const ISSUE_EMPTY = "ほぼ空（1 分未満か 10MB 未満）";
 /** 第31版：同じ名前の録画がほかにもある（2026-11-06 会員サイトに入れるとき取り違えた件） */
@@ -779,12 +783,17 @@ const THUMB_SUB_MAX = 24;
 const THUMB_GUIDE =
   "Zoom の録画の文字起こしを読み、動画のサムネイルに載せる言葉を作る。" +
   "big は見た人が中身を一目で分かる大きな一言（日本語で 6〜14 文字・名詞止めか言い切り・記号や絵文字なし）。" +
-  "sub は big を補う小さな説明（日本語で 10〜22 文字）。誇張しない・数字を作らない・人の名前と会社名を書かない。" +
+  "sub は big を補う小さな説明（日本語で 10〜20 文字・必ず 20 文字以内で言い切る）。" +
+  "誇張しない（大改革・激変・復活・最強・必見のような大げさな言葉を使わない）・数字を作らない・人の名前と会社名を書かない。" +
   "答えは JSON だけ：{\"big\":\"…\",\"sub\":\"…\"}";
 
 function cleanThumb(s: unknown, max: number): string {
-  const t = String(s ?? "").replace(/[\r\n\t]/g, " ").replace(/\s+/g, " ").replace(/^["「『]|["」』]$/g, "").trim();
-  return [...t].slice(0, max).join("");
+  const t = [...String(s ?? "").replace(/[\r\n\t]/g, " ").replace(/\s+/g, " ").replace(/^["「『]|["」』]$/g, "").trim()];
+  if (t.length <= max) return t.join("");
+  // 長すぎるときは途中で切らない：区切り（、・／ 空白）の手前までで言い切れればそこまで、無理なら空（第40版）
+  const head = t.slice(0, max);
+  const cut = Math.max(head.lastIndexOf("、"), head.lastIndexOf("・"), head.lastIndexOf("／"), head.lastIndexOf(" "));
+  return cut >= Math.floor(max / 2) ? head.slice(0, cut).join("") : "";
 }
 
 /** 題名「日付｜会の種類｜話題」から話題の部分を取る（AI を使わない戻り先） */
@@ -798,7 +807,7 @@ export function thumbFromTitle(title: string): { big: string; sub: string } {
 export async function suggestThumbs(env: ArchiveEnv, limit = 6): Promise<{ ok: true; looked: number; ai: number; title: number; failed: number; remaining: number }> {
   const metas = await listJson<Meta>(env.STORE, "shelf/meta/");
   const todo = (await items(env))
-    .filter((it) => !metas.get(metaKey(it.id))?.thumb)
+    .filter((it) => { const t = metas.get(metaKey(it.id))?.thumb; return !t || (t.by === "ai" && (t.v ?? 1) < THUMB_V); })
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   const n = Math.max(1, Math.min(20, Math.floor(limit)));
   const res = { ok: true as const, looked: 0, ai: 0, title: 0, failed: 0, remaining: Math.max(0, todo.length - n) };
@@ -814,7 +823,7 @@ export async function suggestThumbs(env: ArchiveEnv, limit = 6): Promise<{ ok: t
         const j = parseJson(outputText(r)) as { big?: string; sub?: string } | null;
         const big = cleanThumb(j?.big, THUMB_BIG_MAX);
         const sub = cleanThumb(j?.sub, THUMB_SUB_MAX);
-        if (big && !/(さん|様|さま)/.test(big + sub)) thumb = { big, sub, by: "ai", at: new Date().toISOString() };
+        if (big && !/(さん|様|さま)/.test(big + sub)) thumb = { big, sub, by: "ai", at: new Date().toISOString(), v: THUMB_V };
       } catch {
         res.failed++;
       }
@@ -825,7 +834,7 @@ export async function suggestThumbs(env: ArchiveEnv, limit = 6): Promise<{ ok: t
     } else res.ai++;
     // 書く直前に読み直す（名前・ラベルの編集と重なっても消さないため）
     const cur = (await readJson<Meta>(env.STORE, metaKey(it.id))) ?? { updatedAt: "" };
-    if (cur.thumb) continue;
+    if (cur.thumb && !(cur.thumb.by === "ai" && (cur.thumb.v ?? 1) < THUMB_V)) continue; // 手の編集などが先に入っていれば触らない
     cur.thumb = thumb;
     cur.updatedAt = new Date().toISOString();
     await env.STORE.put(metaKey(it.id), JSON.stringify(cur));
