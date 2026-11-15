@@ -1,5 +1,5 @@
 /**
- * zoom-to-youtube / legacy.ts（第19版・2026-11-02 開発部・経理系の依頼 1 便 2）
+ * zoom-to-youtube / legacy.ts（第42版で取り違えの見直しを足した・第19版・2026-11-02 開発部・経理系の依頼 1 便 2）
  *
  * 2026-11-02 より前に録った、Zoom のクラウドに今ある録画（約 88GB）を R2 へ移す。
  * 新しい録画（便 1）は台帳の行から流れるが、こちらは Zoom の一覧から直接、会議 1 回ずつ運ぶ。
@@ -307,6 +307,41 @@ async function jobsBySize(env: ArchiveEnv): Promise<Map<number, JobLite[]>> {
   return map;
 }
 
+const vidOf = (u?: string): string => (u ? (u.split("v=")[1] ?? "").split("&")[0] : "");
+
+/**
+ * 第42版（2026-11-15）：同じ YouTube の動画が 2 本以上の古い録画に付いていたら、1 本だけ残して残りを外す。
+ * 残すのは、台帳の控えで結び付いた（job）録画。job が無ければ、動画が上がった時刻に録った時刻がいちばん近い録画。
+ * 外した録画は「YouTube 無し」になる（R2 の原本・名前・ファイルはそのまま）。毎回の実行で見直すので、何度走っても同じ結果になる。
+ * 見つけたきっかけ：10/28 のセミナーの動画が、長さの同じ 10/08 の打ち合わせにも付いていた
+ */
+export async function unlinkDoubleClaims(env: ArchiveEnv, recs: LegacyRec[], out: (s: string) => void): Promise<number> {
+  const groups = new Map<string, LegacyRec[]>();
+  for (const r of recs) {
+    const v = vidOf(r.match?.youtubeUrl);
+    if (v) groups.set(v, [...(groups.get(v) ?? []), r]);
+  }
+  const dup = [...groups.entries()].filter(([, rs]) => rs.length > 1);
+  if (!dup.length) return 0;
+  const cache = await loadJson<{ videos?: YtVideo[] }>(env, YT_CACHE_KEY);
+  const pub = new Map((cache?.videos ?? []).map((v) => [v.id, Date.parse(v.publishedAt)]));
+  let n = 0;
+  for (const [v, rs] of dup) {
+    const p = pub.get(v);
+    const gap = (r: LegacyRec) => (p && Date.parse(r.start) ? Math.abs(p - Date.parse(r.start)) : Number.MAX_SAFE_INTEGER);
+    const keep = rs.find((r) => r.match?.kind === "job") ?? rs.slice().sort((a, b) => gap(a) - gap(b))[0];
+    for (const r of rs) {
+      if (r === keep) continue;
+      const was = r.match?.title ?? v;
+      r.match = { kind: "none", note: `同じ YouTube の動画（${was}）が ${keep.date} の録画にも付いていたので外した（2026-11-15）` };
+      await saveRec(env, r);
+      out(`  YouTube の取り違えを外した：${r.date}（${was}・残したのは ${keep.date}）`);
+      n++;
+    }
+  }
+  return n;
+}
+
 /** 結び付け。claimed は、すでに別の会議に結び付けた YouTube の番号 */
 export function matchRecording(
   rec: LegacyRec,
@@ -529,7 +564,10 @@ export async function migrateLegacy(
       const r = await loadJson<LegacyRec>(env, recKey(u));
       if (r) recs.push(r);
     }
-    const claimed = new Set(recs.map((r) => (r.match?.kind === "youtube" ? r.match.youtubeUrl?.split("v=")[1] ?? "" : "")).filter(Boolean));
+    // 第42版（2026-11-15）：台帳の控えで結び付いた（job）動画も「もう使った」に数える。
+    // 前は長さで結び付いた分（youtube）だけを数えていたので、10/28 のセミナーの動画が、長さの同じ 10/08 の打ち合わせにも結び付いた
+    const claimed = new Set(recs.map((r) => (r.match?.youtubeUrl ? vidOf(r.match.youtubeUrl) : "")).filter(Boolean));
+    await unlinkDoubleClaims(env, recs, out);
     const stop = () => Date.now() > deadline || res.movedBytes >= BYTES_PER_RUN;
 
     for (const rec of recs) {
@@ -539,7 +577,10 @@ export async function migrateLegacy(
         out(`【古い録画】${rec.date}（${(rec.totalSize / 1073741824).toFixed(2)} GB・ファイル ${rec.files.length} 個）`);
         zoom ??= await zoomToken(env);
         if (!rec.match) {
-          jobs ??= await jobsBySize(env);
+          if (!jobs) {
+            jobs = await jobsBySize(env);
+            for (const js of jobs.values()) for (const j of js) { const v = vidOf(j.youtubeUrl); if (v) claimed.add(v); }
+          }
           videos ??= await ytVideos(env, ytToken);
           rec.match = matchRecording(rec, jobs, videos, claimed);
           if (rec.match.kind === "youtube") claimed.add(rec.match.youtubeUrl?.split("v=")[1] ?? "");
