@@ -852,3 +852,77 @@ export async function memberVideo(env: ArchiveEnv, id: string, range?: string | 
   if (range) headers.range = String(range);
   return streamVideo(new Request("https://member.local/video", { method: method === "HEAD" ? "HEAD" : "GET", headers }), env, m.media.videoKey);
 }
+
+/* ------------------------------------------------------------------ */
+/* 毎週の確認（第38版・2026-11-15 Naoki OK 10:23）                      */
+/*   直近 N 日に録った録画ごとに、2 か所にそろったかを見る（読むだけ）     */
+/*   ・R2（原本）とドライブ（写し）は全部の録画に要る                     */
+/*   ・YouTube はスイッチがオンの録画だけ要る                             */
+/*   ・Zoom はゴミ箱へ移した印だけ見る（ゴミ箱の 30 日は Zoom 側で戻せる）  */
+/* ------------------------------------------------------------------ */
+
+interface WeeklyJob extends JobLike {
+  driveDone?: boolean;
+  zoomDeletedAt?: string;
+  lastError?: string;
+  updatedAt?: string;
+}
+
+export interface WeeklyRow {
+  id: string;
+  date: string;
+  title: string;
+  kai: string;
+  r2: boolean;
+  drive: boolean;
+  youtube_wanted: boolean;
+  youtube: boolean;
+  zoom_trashed: boolean;
+  /** そろった／待ち（録って 1 日以内で失敗なし）／欠け */
+  state: "ok" | "wait" | "missing";
+  missing: string[];
+  error: string | null;
+}
+
+/** 待ちとみなす長さ（録画の取り込みと YouTube への送り出しは 1 時間ごとに少しずつ進むため） */
+const WEEKLY_WAIT_MS = 24 * 3600 * 1000;
+
+export async function weeklyCheck(env: ArchiveEnv, days = 7): Promise<{ ok: true; since: string; until: string; total: number; counts: Record<WeeklyRow["state"], number>; rows: WeeklyRow[] }> {
+  const n = Math.max(1, Math.min(31, Math.floor(days)));
+  const until = todayJst();
+  const since = new Date(Date.parse(`${until}T00:00:00+09:00`) - (n - 1) * 86400000 + 9 * 3600000).toISOString().slice(0, 10);
+  const jobs = await listJson<WeeklyJob>(env.STORE, "job/");
+  const metas = await listJson<Meta>(env.STORE, "shelf/meta/");
+  const rows: WeeklyRow[] = [];
+  for (const [, j] of jobs) {
+    if (!j.recId || !j.date || j.date < since) continue;
+    if (j.r2DeletedAt) continue; // 探す・消す道具で要らないと決めて消した録画は数えない
+    const meta = metas.get(metaKey(j.recId));
+    const kai = meta?.kai ?? j.naming?.kai ?? "その他";
+    const route = routeView({ kind: "new", date: j.date, youtube: !!j.youtubeUrl }, kai, meta);
+    const missing: string[] = [];
+    if (!j.r2Done) missing.push("R2");
+    if (!j.driveDone) missing.push("ドライブ");
+    if (route.youtube && !j.youtubeUrl) missing.push("YouTube");
+    const fresh = Date.now() - Date.parse(`${j.date}T23:59:59+09:00`) < WEEKLY_WAIT_MS;
+    const state: WeeklyRow["state"] = !missing.length ? "ok" : fresh && !j.lastError ? "wait" : "missing";
+    rows.push({
+      id: j.recId,
+      date: j.date,
+      title: (meta?.title || j.naming?.title || j.title || `${j.date}｜${kai}｜録画`).slice(0, 120),
+      kai,
+      r2: !!j.r2Done,
+      drive: !!j.driveDone,
+      youtube_wanted: route.youtube,
+      youtube: !!j.youtubeUrl,
+      zoom_trashed: !!j.zoomDeletedAt,
+      state,
+      missing,
+      error: j.lastError ? String(j.lastError).slice(0, 300) : null,
+    });
+  }
+  rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const counts = { ok: 0, wait: 0, missing: 0 };
+  for (const r of rows) counts[r.state]++;
+  return { ok: true, since, until, total: rows.length, counts, rows };
+}
