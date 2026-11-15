@@ -1,5 +1,6 @@
 /**
- * zoom-to-youtube / 第38版（2026-11-15 開発部：毎週の確認 weekly_check。直近 7 日の録画が R2・ドライブ・YouTube にそろったかを読むだけで返す）
+ * zoom-to-youtube / 第39版（2026-11-15 開発部：サムネの言葉。AI が文字起こしから大きな一言と補足を作り shelf/meta/ に置く。thumb_set・thumbs）
+ * 前の版：第38版（2026-11-15 開発部：毎週の確認 weekly_check。直近 7 日の録画が R2・ドライブ・YouTube にそろったかを読むだけで返す）
  * 前の版：第37版（2026-11-14 開発部：Google スライドの枚の番号を 5 字以上に・作りかけはゴミ箱へ）
  * 前の版：第36版（2026-11-14 開発部・スライド制作 便4b：shia2n-mcp のスライドの台帳から Google スライドを作る createSlidesDeck。許可は今の drive.file のまま・設定の追加 0 個）
  * 前の版：第35版（2026-11-13 開発部・実績の便 2：ドライブの「実績の受け箱」をマーケくんの「実績」へ渡す。workspace の許可に drive.readonly を足した）
@@ -129,7 +130,7 @@ import {
 import { legacyRows, mainVideo, migrateLegacy } from "./legacy";
 import { purgeZoom } from "./purge";
 import { handleShare, syncShares, SHORT_HOST, type YoutubeCandidate } from "./share";
-import { refreshShelfItems, shelfYoutubeCandidates, suggestKai } from "./shelf";
+import { refreshShelfItems, shelfYoutubeCandidates, suggestKai, suggestThumbs } from "./shelf";
 
 export { ArchiveApi } from "./api";
 
@@ -2270,6 +2271,9 @@ export default {
             // 便 A：「その他」の録画に会の種類の案を少しずつ出す（Naoki は承認だけ）
             const sg = (await suggestKai(env, 6)) as { looked?: number; suggested?: number; remaining?: number };
             if (sg.looked) log.push(`録画の棚：会の種類の案 ${sg.suggested ?? 0}／${sg.looked} 本（残り ${sg.remaining ?? 0} 本）`);
+            // 第39版：サムネの言葉を新しい録画から少しずつ（Naoki の手は 0 回）
+            const th = await suggestThumbs(env, 6);
+            if (th.looked) log.push(`録画の棚：サムネの言葉 AI ${th.ai}・題名から ${th.title}（残り ${th.remaining} 本）`);
           } catch (e) {
             log.push(`録画の棚のまとめ直しに失敗：${e instanceof Error ? e.message : String(e)}`);
           }

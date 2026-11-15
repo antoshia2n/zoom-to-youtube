@@ -25,7 +25,7 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { buildArchiveList, readSheetFailures, type ArchiveEnv, type ArchiveListResult, type ArchiveRow } from "./archive";
 import { recKey, type LegacyRec } from "./legacy";
-import { labelsEdit, memberData, memberInfo, memberPage, memberStream, memberVideo, metaSet, refreshShelfItems, routeConfig, routeConfigSet, routeDone, routeSet, shareIssue, shareSet, shelfList, suggestKai, weeklyCheck } from "./shelf";
+import { labelsEdit, memberData, memberInfo, memberPage, memberStream, memberVideo, metaSet, refreshShelfItems, routeConfig, routeConfigSet, routeDone, routeSet, shareIssue, shareSet, shelfList, suggestKai, suggestThumbs, thumbSet, thumbsOf, weeklyCheck } from "./shelf";
 import { saveContentImages, type ContentDriveEnv, type SaveContentImagesInput } from "./content-drive";
 import { uploadAbort, uploadComplete, uploadPart, uploadStart } from "./upload";
 import { inboxDone, inboxStatus, inboxTake } from "./results-drive";
@@ -169,6 +169,21 @@ export class ArchiveApi extends WorkerEntrypoint<ArchiveEnv> {
   /** 第38版：毎週の確認。直近 days 日（既定 7）の録画が R2・ドライブ・（スイッチがオンなら）YouTube にそろったか。読むだけ */
   async weekly_check(days?: number): Promise<object> {
     return weeklyCheck(this.env, days ?? 7);
+  }
+
+  /** 第39版：サムネの言葉を手で編集する（big を空にすると自動に戻す） */
+  async thumb_set(id: string, t: { big?: string; sub?: string }): Promise<object> {
+    return thumbSet(this.env, id, t);
+  }
+
+  /** 第39版：録画の番号ごとのサムネの言葉（会員サイトの一覧が読む） */
+  async thumbs(ids: string[]): Promise<object> {
+    return thumbsOf(this.env, ids);
+  }
+
+  /** 第39版：サムネの言葉を今すぐ少し作る（5 分ごとの処理と同じ） */
+  async suggest_thumbs(limit?: number): Promise<object> {
+    return suggestThumbs(this.env, limit ?? 6);
   }
 
   async share_issue(id: string): Promise<object> {
