@@ -1,5 +1,6 @@
 /**
- * zoom-to-youtube / 第40版（2026-11-15 開発部：サムネの言葉の直し。長すぎる補足を途中で切らない・大げさな言葉を避ける・前の版の AI の言葉は作り直す）
+ * zoom-to-youtube / 第41版（2026-11-15 開発部：サムネの言葉を 1 つの索引 shelf/thumbs.json へ。meta が録画の数に増えて棚の一覧が重くなったため。前の版の言葉は少しずつ移す）
+ * 前の版：第40版（2026-11-15 開発部：サムネの言葉の直し。長すぎる補足を途中で切らない・大げさな言葉を避ける・前の版の AI の言葉は作り直す）
  * 前の版：第39版（2026-11-15 開発部：サムネの言葉。AI が文字起こしから大きな一言と補足を作り shelf/meta/ に置く。thumb_set・thumbs）
  * 前の版：第38版（2026-11-15 開発部：毎週の確認 weekly_check。直近 7 日の録画が R2・ドライブ・YouTube にそろったかを読むだけで返す）
  * 前の版：第37版（2026-11-14 開発部：Google スライドの枚の番号を 5 字以上に・作りかけはゴミ箱へ）
@@ -2274,7 +2275,7 @@ export default {
             if (sg.looked) log.push(`録画の棚：会の種類の案 ${sg.suggested ?? 0}／${sg.looked} 本（残り ${sg.remaining ?? 0} 本）`);
             // 第39版：サムネの言葉を新しい録画から少しずつ（Naoki の手は 0 回）
             const th = await suggestThumbs(env, 6);
-            if (th.looked) log.push(`録画の棚：サムネの言葉 AI ${th.ai}・題名から ${th.title}（残り ${th.remaining} 本）`);
+            if (th.looked || th.migrated) log.push(`録画の棚：サムネの言葉 AI ${th.ai}・題名から ${th.title}（残り ${th.remaining} 本・索引へ移した ${th.migrated} 本）`);
           } catch (e) {
             log.push(`録画の棚のまとめ直しに失敗：${e instanceof Error ? e.message : String(e)}`);
           }
