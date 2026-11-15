@@ -64,7 +64,16 @@ interface Meta {
   /** マーケくんが会員サイトに入れ、知らせを送り終えた時刻と、そのコンテンツ */
   routeDoneAt?: string;
   routeContent?: string;
+  /** 第39版（2026-11-15）：サムネの言葉。型 A（帯）に流し込む。ai＝文字起こしから自動・hand＝手で編集・title＝題名から */
+  thumb?: Thumb;
   updatedAt: string;
+}
+
+export interface Thumb {
+  big: string;
+  sub: string;
+  by: "ai" | "hand" | "title";
+  at: string;
 }
 
 export const ISSUE_EMPTY = "ほぼ空（1 分未満か 10MB 未満）";
@@ -108,6 +117,8 @@ export interface ShelfRow {
   youtube_url: string | null;
   /** 第33版：出し先のスイッチ */
   route: RouteView;
+  /** 第39版：サムネの言葉（まだ無ければ null） */
+  thumb: Thumb | null;
 }
 
 export interface RouteView {
@@ -487,6 +498,7 @@ export async function shelfList(env: ArchiveEnv): Promise<{ ok: true; total: num
       issues,
       youtube_url: it.youtubeUrl ?? null,
       route: routeView(it, kai, meta),
+      thumb: meta?.thumb ?? null,
     });
   });
   // 同じ名前（空白と全角半角の違いは同じとみなす）が 2 本以上あるものに印を付ける
@@ -751,6 +763,105 @@ export async function suggestKai(env: ArchiveEnv, limit = 8): Promise<object> {
     await env.STORE.put(sugKey(it.id), JSON.stringify(sug));
   }
   return { ok: true, looked: Math.min(n, todo.length), suggested: made, no_suggestion: none, remaining: Math.max(0, todo.length - n) };
+}
+
+/* ------------------------------------------------------------------ */
+/* サムネの言葉（第39版・2026-11-15 Naoki OK：型 A「帯」に流し込む）     */
+/*   ・AI（名前付けと同じ Workers AI）が文字起こしから「大きな一言」と     */
+/*     「補足」を作り、shelf/meta/ の thumb に置く。Naoki の手は 0 回       */
+/*   ・文字起こしが無い録画は題名の話題の部分から作る（AI を使わない）     */
+/*   ・手で編集したもの（by: hand）は自動で上書きしない                     */
+/*   ・絵は画像にせず、言葉だけを持つ。型はマーケくんの画面が毎回描く       */
+/* ------------------------------------------------------------------ */
+
+const THUMB_BIG_MAX = 16;
+const THUMB_SUB_MAX = 24;
+const THUMB_GUIDE =
+  "Zoom の録画の文字起こしを読み、動画のサムネイルに載せる言葉を作る。" +
+  "big は見た人が中身を一目で分かる大きな一言（日本語で 6〜14 文字・名詞止めか言い切り・記号や絵文字なし）。" +
+  "sub は big を補う小さな説明（日本語で 10〜22 文字）。誇張しない・数字を作らない・人の名前と会社名を書かない。" +
+  "答えは JSON だけ：{\"big\":\"…\",\"sub\":\"…\"}";
+
+function cleanThumb(s: unknown, max: number): string {
+  const t = String(s ?? "").replace(/[\r\n\t]/g, " ").replace(/\s+/g, " ").replace(/^["「『]|["」』]$/g, "").trim();
+  return [...t].slice(0, max).join("");
+}
+
+/** 題名「日付｜会の種類｜話題」から話題の部分を取る（AI を使わない戻り先） */
+export function thumbFromTitle(title: string): { big: string; sub: string } {
+  const parts = String(title ?? "").split(/[｜|]/).map((s) => s.trim()).filter(Boolean);
+  const topic = parts.filter((p) => !/^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}$/.test(p) && !(KAIS as readonly string[]).includes(p)).pop() ?? "録画";
+  return { big: cleanThumb(topic, THUMB_BIG_MAX), sub: "" };
+}
+
+/** サムネの言葉の無い録画に、新しい順に少しずつ付ける（5 分ごとの処理から） */
+export async function suggestThumbs(env: ArchiveEnv, limit = 6): Promise<{ ok: true; looked: number; ai: number; title: number; failed: number; remaining: number }> {
+  const metas = await listJson<Meta>(env.STORE, "shelf/meta/");
+  const todo = (await items(env))
+    .filter((it) => !metas.get(metaKey(it.id))?.thumb)
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const n = Math.max(1, Math.min(20, Math.floor(limit)));
+  const res = { ok: true as const, looked: 0, ai: 0, title: 0, failed: 0, remaining: Math.max(0, todo.length - n) };
+  for (const it of todo.slice(0, n)) {
+    res.looked++;
+    const meta = metas.get(metaKey(it.id));
+    const title = ((!it.managed && meta?.title) || it.baseTitle || "").trim();
+    let thumb: Thumb | null = null;
+    const text = env.AI ? await transcriptOf(env, it) : null;
+    if (text) {
+      try {
+        const r = await (env.AI as Ai).run(SUG_MODEL as keyof AiModels, { instructions: THUMB_GUIDE, input: `題名：${title}\n\n${text}`, reasoning: { effort: "low" } } as never);
+        const j = parseJson(outputText(r)) as { big?: string; sub?: string } | null;
+        const big = cleanThumb(j?.big, THUMB_BIG_MAX);
+        const sub = cleanThumb(j?.sub, THUMB_SUB_MAX);
+        if (big && !/(さん|様|さま)/.test(big + sub)) thumb = { big, sub, by: "ai", at: new Date().toISOString() };
+      } catch {
+        res.failed++;
+      }
+    }
+    if (!thumb) {
+      thumb = { ...thumbFromTitle(title), by: "title", at: new Date().toISOString() };
+      res.title++;
+    } else res.ai++;
+    // 書く直前に読み直す（名前・ラベルの編集と重なっても消さないため）
+    const cur = (await readJson<Meta>(env.STORE, metaKey(it.id))) ?? { updatedAt: "" };
+    if (cur.thumb) continue;
+    cur.thumb = thumb;
+    cur.updatedAt = new Date().toISOString();
+    await env.STORE.put(metaKey(it.id), JSON.stringify(cur));
+  }
+  return res;
+}
+
+/** サムネの言葉を手で編集する（空にすると自動の言葉に戻す＝次の 5 分ごとの処理で作り直す） */
+export async function thumbSet(env: ArchiveEnv, id: string, t: { big?: string; sub?: string }): Promise<object> {
+  const it = await findItem(env, String(id ?? ""));
+  if (!it) return { ok: false, error: "not_found" };
+  const cur = (await readJson<Meta>(env.STORE, metaKey(it.id))) ?? { updatedAt: "" };
+  const big = cleanThumb(t?.big, THUMB_BIG_MAX);
+  const sub = cleanThumb(t?.sub, THUMB_SUB_MAX);
+  if (!big) delete cur.thumb;
+  else cur.thumb = { big, sub, by: "hand", at: new Date().toISOString() };
+  cur.updatedAt = new Date().toISOString();
+  await env.STORE.put(metaKey(it.id), JSON.stringify(cur));
+  return { ok: true, thumb: cur.thumb ?? null };
+}
+
+/** 会員サイトの一覧に出すサムネの言葉（録画の番号ごと・読むだけ） */
+export async function thumbsOf(env: ArchiveEnv, ids: string[]): Promise<object> {
+  const want = [...new Set((ids ?? []).map((x) => String(x ?? "")).filter(Boolean))].slice(0, 500);
+  if (!want.length) return { ok: true, thumbs: {} };
+  const all = new Map((await items(env)).map((x) => [x.id, x]));
+  const out: Record<string, { big: string; sub: string; kai: string; date: string }> = {};
+  await Promise.all(want.map(async (id) => {
+    const it = all.get(id);
+    if (!it) return;
+    const m = await readJson<Meta>(env.STORE, metaKey(id));
+    const title = ((!it.managed && m?.title) || it.baseTitle || "").trim();
+    const t = m?.thumb ?? { ...thumbFromTitle(title), by: "title" as const, at: "" };
+    out[id] = { big: t.big, sub: t.sub, kai: m?.kai ?? it.baseKai, date: it.date };
+  }));
+  return { ok: true, thumbs: out };
 }
 
 /* ------------------------------------------------------------------ */
