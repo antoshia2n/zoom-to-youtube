@@ -33,6 +33,8 @@ import {
 const INDEX_KEY = "legacy/index.json";
 const REC_PREFIX = "legacy/rec/";
 const YT_CACHE_KEY = "legacy/youtube.json";
+/** 第43版：同じ YouTube の動画の付き過ぎを最後に見直した時刻 */
+const DEDUPE_KEY = "legacy/dedupe.json";
 const DAY = 86400000;
 /** 一覧を遡るいちばん古い月 */
 const FLOOR = "2020-01";
@@ -567,7 +569,12 @@ export async function migrateLegacy(
     // 第42版（2026-11-15）：台帳の控えで結び付いた（job）動画も「もう使った」に数える。
     // 前は長さで結び付いた分（youtube）だけを数えていたので、10/28 のセミナーの動画が、長さの同じ 10/08 の打ち合わせにも結び付いた
     const claimed = new Set(recs.map((r) => (r.match?.youtubeUrl ? vidOf(r.match.youtubeUrl) : "")).filter(Boolean));
-    await unlinkDoubleClaims(env, recs, out);
+    // 第43版：見直しは保管した古い録画の全部で行う（idx は Zoom に今ある会議だけなので、Zoom から消えた録画が入らない）。重いので 1 日 1 回
+    const dd = await loadJson<{ at: string }>(env, DEDUPE_KEY);
+    if (!dd || Date.now() - Date.parse(dd.at) >= DAY) {
+      await unlinkDoubleClaims(env, await legacyRows(env), out);
+      await env.STORE.put(DEDUPE_KEY, JSON.stringify({ at: new Date().toISOString() }));
+    }
     const stop = () => Date.now() > deadline || res.movedBytes >= BYTES_PER_RUN;
 
     for (const rec of recs) {
