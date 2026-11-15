@@ -132,7 +132,7 @@ import {
 import { legacyRows, mainVideo, migrateLegacy } from "./legacy";
 import { purgeZoom } from "./purge";
 import { handleShare, syncShares, SHORT_HOST, type YoutubeCandidate } from "./share";
-import { refreshShelfItems, shelfYoutubeCandidates, suggestKai, suggestThumbs } from "./shelf";
+import { refreshShelfItems, shelfMetaById, shelfYoutubeCandidates, suggestKai, suggestThumbs } from "./shelf";
 
 export { ArchiveApi } from "./api";
 
@@ -1055,19 +1055,23 @@ async function appendRow(token: string, id: string, share: string): Promise<void
 // 第19版：一覧（ArchiveApi）に古い録画の行を出すための読み方
 setLegacyReader(async (env) => {
   const recs = await legacyRows(env);
+  // 第44版：管理シートと結び付いていない録画は、棚で手で直した題名・会の種類を先に使う（棚と同じ並び）
+  const metas = await shelfMetaById(env);
+  const metaOf = (r: (typeof recs)[number]) => (r.match?.jobRecId ? undefined : metas.get(r.uuid.replace(/[^A-Za-z0-9._-]/g, "_")));
   const rows: ArchiveRow[] = recs.map((r) => {
     const main = mainVideo(r.files);
+    const meta = metaOf(r);
     return {
       rec_id: r.uuid,
       date: r.date,
-      title: r.match?.title ?? r.naming?.title ?? "",
+      title: meta?.title ?? r.match?.title ?? r.naming?.title ?? "",
       r2: !!r.r2Done && !r.r2DeletedAt,
       r2_key: r.r2Done && !r.r2DeletedAt ? (main?.r2Key ?? r.files[0]?.r2Key ?? null) : null,
       youtube: !!r.match?.youtubeUrl,
       youtube_url: r.match?.youtubeUrl ?? null,
       zoom_deleted: !!r.zoomDeletedAt,
       zoom_deleted_at: r.zoomDeletedAt ?? null,
-      kai: r.naming?.kai ?? null,
+      kai: meta?.kai ?? r.naming?.kai ?? null,
       r2_deleted_at: r.r2DeletedAt ?? null,
       naming: r.naming?.mode ?? "未",
       naming_note: [r.naming?.note, r.match?.kind === "none" ? r.match.note : null].filter(Boolean).join("・") || null,
