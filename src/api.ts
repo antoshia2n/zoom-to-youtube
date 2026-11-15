@@ -25,7 +25,7 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { buildArchiveList, readSheetFailures, type ArchiveEnv, type ArchiveListResult, type ArchiveRow } from "./archive";
 import { recKey, type LegacyRec } from "./legacy";
-import { labelsEdit, memberData, memberInfo, memberPage, memberStream, memberVideo, metaSet, refreshShelfItems, routeConfig, routeConfigSet, routeDone, routeSet, shareIssue, shareSet, shelfList, suggestKai } from "./shelf";
+import { labelsEdit, memberData, memberInfo, memberPage, memberStream, memberVideo, metaSet, refreshShelfItems, routeConfig, routeConfigSet, routeDone, routeSet, shareIssue, shareSet, shelfList, suggestKai, weeklyCheck } from "./shelf";
 import { saveContentImages, type ContentDriveEnv, type SaveContentImagesInput } from "./content-drive";
 import { uploadAbort, uploadComplete, uploadPart, uploadStart } from "./upload";
 import { inboxDone, inboxStatus, inboxTake } from "./results-drive";
@@ -164,6 +164,11 @@ export class ArchiveApi extends WorkerEntrypoint<ArchiveEnv> {
 
   async shelf(): Promise<object> {
     return shelfList(this.env);
+  }
+
+  /** 第38版：毎週の確認。直近 days 日（既定 7）の録画が R2・ドライブ・（スイッチがオンなら）YouTube にそろったか。読むだけ */
+  async weekly_check(days?: number): Promise<object> {
+    return weeklyCheck(this.env, days ?? 7);
   }
 
   async share_issue(id: string): Promise<object> {
