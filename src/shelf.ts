@@ -465,6 +465,7 @@ export async function shelfList(env: ArchiveEnv): Promise<{ ok: true; total: num
   const all = await items(env);
   const metas = await listJson<Meta>(env.STORE, "shelf/meta/");
   const sugs = await listJson<Sug>(env.STORE, "shelf/sug/");
+  const thumbs = await readThumbs(env);
   const shortOk = await shortHostOk(env.STORE);
   const rows: ShelfRow[] = [];
   // 共有の控えは数十件なので 1 件ずつ引く（並べて引く）
@@ -502,7 +503,7 @@ export async function shelfList(env: ArchiveEnv): Promise<{ ok: true; total: num
       issues,
       youtube_url: it.youtubeUrl ?? null,
       route: routeView(it, kai, meta),
-      thumb: meta?.thumb ?? null,
+      thumb: thumbs[it.id] ?? meta?.thumb ?? null,
     });
   });
   // 同じ名前（空白と全角半角の違いは同じとみなす）が 2 本以上あるものに印を付ける
@@ -803,17 +804,74 @@ export function thumbFromTitle(title: string): { big: string; sub: string } {
   return { big: cleanThumb(topic, THUMB_BIG_MAX), sub: "" };
 }
 
+/* 第41版（2026-11-15）：言葉は録画ごとの shelf/meta/ ではなく 1 つの索引 shelf/thumbs.json に置く。
+ *   meta に置くと meta のファイルが全部の録画の数（500 超）に増え、棚の一覧が毎回それを 1 つずつ読んで重くなり、
+ *   AI から一覧が読めなくなった（「B につながりませんでした」）。前の版で meta に入れた言葉は少しずつ索引へ移し、
+ *   言葉しか持っていない meta は消して、meta の数を元に戻す */
+const THUMBS_KEY = "shelf/thumbs.json";
+const MIGRATE_PER_RUN = 150;
+
+async function readThumbs(env: ArchiveEnv): Promise<Record<string, Thumb>> {
+  return (await readJson<Record<string, Thumb>>(env.STORE, THUMBS_KEY)) ?? {};
+}
+/** 書く直前に読み直して、変えた分だけを重ねる（5 分ごとの処理と手の編集が重なっても消さないため） */
+async function patchThumbs(env: ArchiveEnv, patch: Record<string, Thumb | null>): Promise<Record<string, Thumb>> {
+  const cur = await readThumbs(env);
+  for (const [id, t] of Object.entries(patch)) {
+    if (t) cur[id] = t;
+    else delete cur[id];
+  }
+  await env.STORE.put(THUMBS_KEY, JSON.stringify(cur));
+  return cur;
+}
+export async function thumbMap(env: ArchiveEnv): Promise<Record<string, Thumb>> {
+  return readThumbs(env);
+}
+
+/** 前の版で meta に入れた言葉を索引へ移す（1 回に MIGRATE_PER_RUN 件まで） */
+async function migrateMetaThumbs(env: ArchiveEnv): Promise<number> {
+  const keys = [...(await listKeys(env.STORE, "shelf/meta/"))];
+  if (!keys.length) return 0;
+  const idOf = new Map((await items(env)).map((it) => [metaKey(it.id), it.id]));
+  const moved: Record<string, Thumb> = {};
+  const toDelete: string[] = [];
+  const toRewrite: [string, Meta][] = [];
+  // 読むのは 1 回に 400 件まで、移すのは MIGRATE_PER_RUN 件まで（言葉を持たない meta だけが先に並んでも止まらないため）
+  for (let i = 0; i < keys.length && i < 400 && Object.keys(moved).length < MIGRATE_PER_RUN; i += 50) {
+    const batch = keys.slice(i, i + 50);
+    const got = await Promise.all(batch.map(async (k) => [k, await readJson<Meta>(env.STORE, k)] as const));
+    for (const [k, m] of got) {
+      const id = idOf.get(k);
+      if (!m?.thumb || !id) continue;
+      moved[id] = m.thumb;
+      delete m.thumb;
+      const rest = Object.keys(m).filter((x) => x !== "updatedAt");
+      if (!rest.length) toDelete.push(k);
+      else toRewrite.push([k, m]);
+    }
+  }
+  if (!Object.keys(moved).length) return 0;
+  const cur = await readThumbs(env);
+  for (const [id, t] of Object.entries(moved)) if (!cur[id]) cur[id] = t;
+  await env.STORE.put(THUMBS_KEY, JSON.stringify(cur));
+  await Promise.all([...toDelete.map((k) => env.STORE.delete(k)), ...toRewrite.map(([k, m]) => env.STORE.put(k, JSON.stringify(m)))]);
+  return Object.keys(moved).length;
+}
+
 /** サムネの言葉の無い録画に、新しい順に少しずつ付ける（5 分ごとの処理から） */
-export async function suggestThumbs(env: ArchiveEnv, limit = 6): Promise<{ ok: true; looked: number; ai: number; title: number; failed: number; remaining: number }> {
-  const metas = await listJson<Meta>(env.STORE, "shelf/meta/");
-  const todo = (await items(env))
-    .filter((it) => { const t = metas.get(metaKey(it.id))?.thumb; return !t || (t.by === "ai" && (t.v ?? 1) < THUMB_V); })
+export async function suggestThumbs(env: ArchiveEnv, limit = 6): Promise<{ ok: true; looked: number; ai: number; title: number; failed: number; remaining: number; migrated: number }> {
+  const migrated = await migrateMetaThumbs(env);
+  const map = await readThumbs(env);
+  const all = await items(env);
+  const todo = all
+    .filter((it) => { const t = map[it.id]; return !t || (t.by === "ai" && (t.v ?? 1) < THUMB_V); })
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   const n = Math.max(1, Math.min(20, Math.floor(limit)));
-  const res = { ok: true as const, looked: 0, ai: 0, title: 0, failed: 0, remaining: Math.max(0, todo.length - n) };
+  const res = { ok: true as const, looked: 0, ai: 0, title: 0, failed: 0, remaining: Math.max(0, todo.length - n), migrated };
+  const patch: Record<string, Thumb> = {};
   for (const it of todo.slice(0, n)) {
     res.looked++;
-    const meta = metas.get(metaKey(it.id));
+    const meta = it.managed ? null : await readJson<Meta>(env.STORE, metaKey(it.id));
     const title = ((!it.managed && meta?.title) || it.baseTitle || "").trim();
     let thumb: Thumb | null = null;
     const text = env.AI ? await transcriptOf(env, it) : null;
@@ -832,12 +890,16 @@ export async function suggestThumbs(env: ArchiveEnv, limit = 6): Promise<{ ok: t
       thumb = { ...thumbFromTitle(title), by: "title", at: new Date().toISOString() };
       res.title++;
     } else res.ai++;
-    // 書く直前に読み直す（名前・ラベルの編集と重なっても消さないため）
-    const cur = (await readJson<Meta>(env.STORE, metaKey(it.id))) ?? { updatedAt: "" };
-    if (cur.thumb && !(cur.thumb.by === "ai" && (cur.thumb.v ?? 1) < THUMB_V)) continue; // 手の編集などが先に入っていれば触らない
-    cur.thumb = thumb;
-    cur.updatedAt = new Date().toISOString();
-    await env.STORE.put(metaKey(it.id), JSON.stringify(cur));
+    patch[it.id] = thumb;
+  }
+  if (Object.keys(patch).length) {
+    // 書く直前に読み直し、その間に手で編集されたものは触らない
+    const cur = await readThumbs(env);
+    for (const [id, t] of Object.entries(patch)) {
+      const c = cur[id];
+      if (!c || (c.by === "ai" && (c.v ?? 1) < THUMB_V)) cur[id] = t;
+    }
+    await env.STORE.put(THUMBS_KEY, JSON.stringify(cur));
   }
   return res;
 }
@@ -846,14 +908,14 @@ export async function suggestThumbs(env: ArchiveEnv, limit = 6): Promise<{ ok: t
 export async function thumbSet(env: ArchiveEnv, id: string, t: { big?: string; sub?: string }): Promise<object> {
   const it = await findItem(env, String(id ?? ""));
   if (!it) return { ok: false, error: "not_found" };
-  const cur = (await readJson<Meta>(env.STORE, metaKey(it.id))) ?? { updatedAt: "" };
   const big = cleanThumb(t?.big, THUMB_BIG_MAX);
   const sub = cleanThumb(t?.sub, THUMB_SUB_MAX);
-  if (!big) delete cur.thumb;
-  else cur.thumb = { big, sub, by: "hand", at: new Date().toISOString() };
-  cur.updatedAt = new Date().toISOString();
-  await env.STORE.put(metaKey(it.id), JSON.stringify(cur));
-  return { ok: true, thumb: cur.thumb ?? null };
+  const next: Thumb | null = big ? { big, sub, by: "hand", at: new Date().toISOString() } : null;
+  await patchThumbs(env, { [it.id]: next });
+  // 前の版で meta に残っている言葉も外す（索引と食い違わないため）
+  const m = await readJson<Meta>(env.STORE, metaKey(it.id));
+  if (m?.thumb) { delete m.thumb; await env.STORE.put(metaKey(it.id), JSON.stringify(m)); }
+  return { ok: true, thumb: next };
 }
 
 /** 会員サイトの一覧に出すサムネの言葉（録画の番号ごと・読むだけ） */
@@ -861,13 +923,14 @@ export async function thumbsOf(env: ArchiveEnv, ids: string[]): Promise<object> 
   const want = [...new Set((ids ?? []).map((x) => String(x ?? "")).filter(Boolean))].slice(0, 500);
   if (!want.length) return { ok: true, thumbs: {} };
   const all = new Map((await items(env)).map((x) => [x.id, x]));
+  const map = await readThumbs(env);
   const out: Record<string, { big: string; sub: string; kai: string; date: string }> = {};
   await Promise.all(want.map(async (id) => {
     const it = all.get(id);
     if (!it) return;
     const m = await readJson<Meta>(env.STORE, metaKey(id));
     const title = ((!it.managed && m?.title) || it.baseTitle || "").trim();
-    const t = m?.thumb ?? { ...thumbFromTitle(title), by: "title" as const, at: "" };
+    const t = map[id] ?? m?.thumb ?? { ...thumbFromTitle(title), by: "title" as const, at: "" };
     out[id] = { big: t.big, sub: t.sub, kai: m?.kai ?? it.baseKai, date: it.date };
   }));
   return { ok: true, thumbs: out };
