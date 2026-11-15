@@ -250,6 +250,22 @@ export async function shelfYoutubeCandidates(env: ArchiveEnv): Promise<{ jobKey:
 /* 小物                                                                */
 /* ------------------------------------------------------------------ */
 
+/**
+ * 第44版（2026-11-16）：棚で手で直した題名と会の種類（shelf/meta/）を、録画の番号ごとに返す。
+ * 一覧と AI の検索（zoom_archive__list・search）を棚の題名にそろえるため。
+ * 管理シートと結び付いた録画（managed）はシートが正本なので、呼ぶ側で外す
+ */
+export async function shelfMetaById(env: ArchiveEnv): Promise<Map<string, { title?: string; kai?: string }>> {
+  const metas = await listJson<Meta>(env.STORE, "shelf/meta/");
+  const out = new Map<string, { title?: string; kai?: string }>();
+  for (const [key, m] of metas) {
+    const id = key.replace(/^shelf\/meta\//, "").replace(/\.json$/, "");
+    const title = (m.title ?? "").trim();
+    if (title || m.kai) out.set(id, { title: title || undefined, kai: m.kai });
+  }
+  return out;
+}
+
 async function listJson<T>(store: R2Bucket, prefix: string): Promise<Map<string, T>> {
   const out = new Map<string, T>();
   let cursor: string | undefined;
