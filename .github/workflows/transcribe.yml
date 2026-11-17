@@ -13,6 +13,9 @@ on:
       limit:
         description: "何本まで流すか"
         default: "5"
+      mode:
+        description: "transcribe（文字起こし）か clean（整えた版）"
+        default: "transcribe"
 
 permissions:
   id-token: write
@@ -20,7 +23,8 @@ permissions:
   actions: write
 
 concurrency:
-  group: transcribe
+  # 第51版：文字起こしと整えた版は別々に並ぶ（待っている実行が置き換わらないように）
+  group: transcribe-${{ github.event.inputs.mode || 'request' }}
   cancel-in-progress: false
 
 jobs:
@@ -35,6 +39,7 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           LIMIT_INPUT: ${{ github.event.inputs.limit }}
+          MODE_INPUT: ${{ github.event.inputs.mode }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pip install -q requests
