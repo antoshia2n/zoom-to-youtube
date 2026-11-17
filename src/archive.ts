@@ -577,6 +577,61 @@ export interface ArchiveRow {
   kai: string | null;
   /** 第21版：探す・消す道具で R2 から消した日時 */
   r2_deleted_at: string | null;
+  /** 第46版：録画の長さ（分・小数 1 桁）。取れないときは null */
+  duration_min: number | null;
+}
+
+/** 第46版：本数と長さの合計 */
+export interface LengthTally {
+  count: number;
+  minutes: number;
+  /** 長さが取れなかった本数（minutes には入らない） */
+  no_length: number;
+}
+export interface YearTally extends LengthTally {
+  naming: Record<string, LengthTally>;
+}
+
+function addTo(t: LengthTally, r: ArchiveRow): void {
+  t.count++;
+  if (r.duration_min === null) t.no_length++;
+  else t.minutes += r.duration_min;
+}
+
+/** 第46版：行から「年ごと × naming ごと」の本数と長さの合計を作る。全体（all）も付ける */
+export function tallyByYear(rows: ArchiveRow[]): { by_year: Record<string, YearTally>; all: YearTally } {
+  const blank = (): YearTally => ({ count: 0, minutes: 0, no_length: 0, naming: {} });
+  const by: Record<string, YearTally> = {};
+  const all = blank();
+  for (const r of rows) {
+    const y = /^\d{4}/.test(r.date) ? r.date.slice(0, 4) : "日付なし";
+    if (!by[y]) by[y] = blank();
+    for (const t of [by[y], all]) {
+      addTo(t, r);
+      if (!t.naming[r.naming]) t.naming[r.naming] = { count: 0, minutes: 0, no_length: 0 };
+      addTo(t.naming[r.naming], r);
+    }
+  }
+  const round = (t: LengthTally) => {
+    t.minutes = Math.round(t.minutes);
+  };
+  for (const t of [...Object.values(by), all]) {
+    round(t);
+    Object.values(t.naming).forEach(round);
+  }
+  const sorted: Record<string, YearTally> = {};
+  for (const k of Object.keys(by).sort()) sorted[k] = by[k];
+  return { by_year: sorted, all };
+}
+
+/** 第46版：字幕のファイルのいちばん後ろの終わりの時刻（秒）。読めなければ 0 */
+export function vttEndSec(vtt: string): number {
+  let end = 0;
+  for (const m of vtt.matchAll(/-->\s*(?:(\d+):)?(\d{2}):(\d{2})/g)) {
+    const sec = Number(m[1] ?? 0) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+    if (sec > end) end = sec;
+  }
+  return end;
 }
 
 export interface ArchiveListResult {
@@ -597,6 +652,7 @@ type JobLike = R2Progress & {
   size?: number;
   youtubeUrl?: string;
   naming?: Naming;
+  durationSec?: number;
   zoomDeletedAt?: string;
   r2DeletedAt?: string;
   lastError?: string;
@@ -623,6 +679,12 @@ export async function buildArchiveList(
         failures.push({ where: "控え", what: o.key, error: "控えが JSON で読めない" });
         continue;
       }
+      // 第46版：長さは控えの値。第46版より前の録画は R2 の字幕の最後の時刻から取る
+      let durSec = j.durationSec ?? 0;
+      if (!durSec && j.r2Done && !j.r2DeletedAt && j.r2Key) {
+        const v = await env.STORE.get(j.r2Key.replace(/\.mp4$/, ".vtt"));
+        if (v) durSec = vttEndSec(await v.text());
+      }
       rows.push({
         rec_id: j.recId,
         date: j.date ?? "",
@@ -640,6 +702,7 @@ export async function buildArchiveList(
         size_gb: j.size ? Math.round((j.size / 1073741824) * 100) / 100 : null,
         kai: j.naming?.kai ?? null,
         r2_deleted_at: j.r2DeletedAt ?? null,
+        duration_min: durSec > 0 ? Math.round((durSec / 60) * 10) / 10 : null,
       });
       if (j.lastError) failures.push({ where: "録画", what: `${j.date ?? ""} ${j.title ?? j.recId}`, error: j.lastError });
     }
