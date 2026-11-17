@@ -1,0 +1,39 @@
+# 第47版（2026-11-17 開発部）：文字起こしが無い録画に OpenAI whisper-1 で時刻付きの文字起こしを足す。
+# 音声を 10 分ごとに切って送り、時刻をつないで zoom-to-youtube へ返す。
+# 動かし方：.github/transcribe-request.json の limit を書き換えて main へ上げる（または Actions の画面から手で）。
+# 実行の記録は公開なので、題名と文字起こしの中身は出さない。
+name: transcribe
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/transcribe-request.json"]
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "何本まで流すか"
+        default: "5"
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: transcribe
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - name: ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
+      - name: transcribe
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          LIMIT_INPUT: ${{ github.event.inputs.limit }}
+        run: |
+          pip install -q requests
+          python3 scripts/transcribe.py

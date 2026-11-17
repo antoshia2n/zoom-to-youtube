@@ -131,6 +131,7 @@ import {
 } from "./archive";
 import { legacyRows, mainVideo, migrateLegacy } from "./legacy";
 import { purgeZoom } from "./purge";
+import { handleTranscribe } from "./transcribe";
 import { handleShare, syncShares, SHORT_HOST, type YoutubeCandidate } from "./share";
 import { refreshShelfItems, shelfMetaById, shelfYoutubeCandidates, suggestKai, suggestThumbs } from "./shelf";
 
@@ -2172,6 +2173,11 @@ export default {
     // 第26版：自前の共有リンク（/v/<番号>）
     if (url.pathname.startsWith("/v/")) {
       return (await handleShare(request, env)) ?? text("見つかりません", 404);
+    }
+
+    // 第47版：GitHub Actions からの文字起こしの受け渡し（GitHub の本人確認だけを受ける）
+    if (url.pathname.startsWith("/transcribe/")) {
+      return handleTranscribe(request, env, url);
     }
 
     switch (url.pathname) {
