@@ -23,7 +23,7 @@
  *   ・R2 へまだ入っていない古い録画も消せる（R2 へは入れず、Zoom のゴミ箱へ移すだけになる）
  */
 import { WorkerEntrypoint } from "cloudflare:workers";
-import { buildArchiveList, readSheetFailures, type ArchiveEnv, type ArchiveListResult, type ArchiveRow } from "./archive";
+import { buildArchiveList, readSheetFailures, tallyByYear, type ArchiveEnv, type ArchiveListResult, type ArchiveRow } from "./archive";
 import { recKey, type LegacyRec } from "./legacy";
 import { labelsEdit, memberData, memberInfo, memberPage, memberStream, memberVideo, metaSet, refreshShelfItems, routeConfig, routeConfigSet, routeDone, routeSet, shareIssue, shareSet, shelfList, suggestKai, suggestThumbs, thumbSet, thumbsOf, weeklyCheck } from "./shelf";
 import { saveContentImages, type ContentDriveEnv, type SaveContentImagesInput } from "./content-drive";
@@ -87,10 +87,12 @@ interface JobLike {
 export class ArchiveApi extends WorkerEntrypoint<ArchiveEnv> {
   async list(opts?: { include_rows?: boolean }): Promise<ArchiveListResult & { rows_note?: string }> {
     const r = await buildArchiveList(this.env, () => readSheetFailures(this.env));
-    if (opts?.include_rows) return r;
+    // 第46版：年ごと × naming ごとの本数と長さの合計（分）。長さが取れない録画は no_length に本数だけ
+    const tally = tallyByYear(r.rows ?? []);
+    if (opts?.include_rows) return { ...r, ...tally };
     const { rows: _rows, ...rest } = r;
     void _rows;
-    return { ...rest, rows_note: "行は省いた。録画を探すときは zoom_archive__search を使う（全部の行は include_rows: true）" };
+    return { ...rest, ...tally, rows_note: "行は省いた。録画を探すときは zoom_archive__search を使う（全部の行は include_rows: true）" };
   }
 
   async search(q: SearchQuery): Promise<object> {

@@ -273,6 +273,8 @@ interface Job {
   privacy?: string;
   /** 第18版：名前付けの結果 */
   naming?: Naming;
+  /** 第46版：録画の長さ（秒）。zoom_archive__list の長さの合計に使う */
+  durationSec?: number;
   /** 第18版：原本の R2 の置き場と、分割アップロードの途中経過 */
   r2Key?: string;
   r2UploadId?: string;
@@ -1078,6 +1080,7 @@ setLegacyReader(async (env) => {
       updated_at: r.updatedAt,
       kind: "legacy",
       size_gb: Math.round((r.totalSize / 1073741824) * 100) / 100,
+      duration_min: r.durationSec > 0 ? Math.round((r.durationSec / 60) * 10) / 10 : null,
     };
   });
   const remaining = recs.filter((r) => !r.r2DeletedAt).reduce((a, r) => a + r.files.filter((f) => !f.r2Done).reduce((b, f) => b + f.size, 0), 0);
@@ -1201,6 +1204,7 @@ async function processRow(
       out("  前回の途中経過が残っていました。続きから進めます");
     }
     job.naming = naming;
+    if (z.durationSec > 0) job.durationSec = z.durationSec;
     job.meetingUuid = z.meetingUuid;
     await saveJob(env, job);
     jobRef = job;
