@@ -184,4 +184,14 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        # 途中で止まったら、理由だけを控えへ（中身は出さない）
+        msg = f"{type(e).__name__}: {str(e)[:200]}"
+        print("止まった：" + msg)
+        try:
+            call("POST", "/transcribe/report", json={"sent": 0, "ok": 0, "failed": 0, "minutes": 0, "boundaries": 0, "jumps": 0, "note": msg})
+        except Exception:
+            pass
+        sys.exit(1)
