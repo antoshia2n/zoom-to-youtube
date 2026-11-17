@@ -36,6 +36,8 @@ export interface TranscribeLedger {
   usd: number;
   done: string[];
   failed: Record<string, string>;
+  /** 第49版：録画ごとの切れ目の確かめ（区切りの数・切れ目の数・飛び戻り） */
+  checks?: Record<string, { date: string; minutes: number; parts: number; boundaries: number; jumps: number; naming: string }>;
   /** 最後の実行の控え（題名なし） */
   lastRun?: {
     at: string;
@@ -160,6 +162,11 @@ export async function handleTranscribe(req: Request, env: ArchiveEnv, url: URL):
   }
   const l = await loadLedger(env);
 
+  // 第49版：費用だけを見る軽い口（1 本ごとの確かめ用。録画の一覧は読まない）
+  if (url.pathname === "/transcribe/budget") {
+    return json({ ok: true, usd: l.usd, usd_stop: USD_STOP, ...(l.usd >= USD_STOP ? { stop: `費用が $${USD_STOP} に届いた（$${l.usd.toFixed(2)}）` } : {}) });
+  }
+
   if (url.pathname === "/transcribe/next") {
     if (l.usd >= USD_STOP) return json({ ok: true, stop: `費用が $${USD_STOP} に届いた（$${l.usd.toFixed(2)}）`, rows: [] });
     const limit = Math.max(1, Math.min(300, Number(url.searchParams.get("limit") ?? "5") || 5));
@@ -186,7 +193,7 @@ export async function handleTranscribe(req: Request, env: ArchiveEnv, url: URL):
   if (url.pathname === "/transcribe/put" && req.method === "POST") {
     if (!recObj) return json({ ok: false, error: "録画が無い" }, 404);
     const r = JSON.parse(await recObj.text()) as LegacyRec;
-    const body = (await req.json()) as { vtt?: string; minutes?: number; error?: string };
+    const body = (await req.json()) as { vtt?: string; minutes?: number; error?: string; parts?: number; boundaries?: number; jumps?: number };
     if (body.error) {
       l.failed[r.uuid] = body.error.slice(0, 200);
       await saveLedger(env, l);
@@ -223,6 +230,8 @@ export async function handleTranscribe(req: Request, env: ArchiveEnv, url: URL):
     r.updatedAt = new Date().toISOString();
     await env.STORE.put(recKey(r.uuid), JSON.stringify(r));
     if (!l.done.includes(r.uuid)) l.done.push(r.uuid);
+    l.checks = l.checks ?? {};
+    l.checks[r.uuid] = { date: r.date, minutes, parts: Number(body.parts) || 0, boundaries: Number(body.boundaries) || 0, jumps: Number(body.jumps) || 0, naming: r.naming.mode };
     delete l.failed[r.uuid];
     await saveLedger(env, l);
     return json({ ok: true, naming: r.naming.mode, usd: l.usd });
@@ -240,9 +249,43 @@ export async function handleTranscribe(req: Request, env: ArchiveEnv, url: URL):
   return json({ ok: false, error: "見つかりません" }, 404);
 }
 
+/** 第49版：VTT の中で時刻が戻る回数（前の行の始まりより 1 秒以上前に始まる行） */
+function vttBackJumps(vtt: string): { cues: number; back: number } {
+  let prev = -1;
+  let back = 0;
+  let cues = 0;
+  for (const m of vtt.matchAll(/(\d{2}):(\d{2}):(\d{2})\.\d{3}\s*-->/g)) {
+    const t = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+    if (prev >= 0 && t < prev - 1) back++;
+    prev = t;
+    cues++;
+  }
+  return { cues, back };
+}
+
+/** 第49版：控えに確かめが無い録画（第49版より前に入れた分）を、R2 の VTT から確かめて足す */
+async function backfillChecks(env: ArchiveEnv, l: TranscribeLedger): Promise<boolean> {
+  l.checks = l.checks ?? {};
+  let changed = false;
+  for (const id of l.done) {
+    if (l.checks[id]) continue;
+    const o = await env.STORE.get(recKey(id));
+    if (!o) continue;
+    const r = JSON.parse(await o.text()) as LegacyRec;
+    const f = r.files.find((x) => x.type === "TRANSCRIPT" && x.r2Key);
+    const v = f ? await env.STORE.get(f.r2Key as string) : null;
+    if (!v) continue;
+    const c = vttBackJumps(await v.text());
+    l.checks[id] = { date: r.date, minutes: Math.round(r.durationSec / 60), parts: Math.ceil(r.durationSec / 600), boundaries: Math.max(0, Math.ceil(r.durationSec / 600) - 1), jumps: c.back, naming: r.naming?.mode ?? "未" };
+    changed = true;
+  }
+  return changed;
+}
+
 /** zoom_archive__list に出す控え（題名なし） */
 export async function transcribeSummary(env: ArchiveEnv): Promise<object> {
   const l = await loadLedger(env);
+  if (await backfillChecks(env, l)) await saveLedger(env, l);
   const rj = await env.STORE.get(REJECT_KEY);
   return {
     last_reject: rj ? JSON.parse(await rj.text()) : null,
@@ -254,5 +297,7 @@ export async function transcribeSummary(env: ArchiveEnv): Promise<object> {
     usd_stop: USD_STOP,
     days: l.days,
     last_run: l.lastRun ?? null,
+    jumps_total: Object.values(l.checks ?? {}).reduce((a, c) => a + c.jumps, 0),
+    checks: Object.values(l.checks ?? {}).slice(-10),
   };
 }
