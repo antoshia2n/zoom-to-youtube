@@ -16,6 +16,8 @@
  */
 import { nameRecording, type ArchiveEnv, type Naming } from "./archive";
 import { legacyRows, mainVideo, recKey, type LegacyFile, type LegacyRec } from "./legacy";
+import { cuesForPlayer } from "./player";
+import { cleanKey } from "./share";
 
 const ISSUER = "https://token.actions.githubusercontent.com";
 const AUDIENCE = "zoom-to-youtube-transcribe";
@@ -162,6 +164,9 @@ export async function handleTranscribe(req: Request, env: ArchiveEnv, url: URL):
   }
   const l = await loadLedger(env);
 
+  // 第51版：整えた版（gpt-5-mini）の受け渡し
+  if (url.pathname.startsWith("/transcribe/clean-")) return handleClean(req, env, url);
+
   // 第49版：費用だけを見る軽い口（1 本ごとの確かめ用。録画の一覧は読まない）
   if (url.pathname === "/transcribe/budget") {
     return json({ ok: true, usd: l.usd, usd_stop: USD_STOP, ...(l.usd >= USD_STOP ? { stop: `費用が $${USD_STOP} に届いた（$${l.usd.toFixed(2)}）` } : {}) });
@@ -299,5 +304,128 @@ export async function transcribeSummary(env: ArchiveEnv): Promise<object> {
     last_run: l.lastRun ?? null,
     jumps_total: Object.values(l.checks ?? {}).reduce((a, c) => a + c.jumps, 0),
     checks: Object.values(l.checks ?? {}).slice(-10),
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* 第51版：整えた版（文字起こしを読み物に整える・gpt-5-mini）            */
+/* ------------------------------------------------------------------ */
+
+const CLEAN_LEDGER_KEY = "transcribe/clean-ledger.json";
+/** gpt-5-mini の値段（100 万トークンあたり・2026-11-18 に OpenAI の値段の表で確認） */
+const CLEAN_IN_PER_M = 0.25;
+const CLEAN_OUT_PER_M = 2.0;
+/** 1 か月に使ってよい額（Naoki OK 2026-11-18 00:31） */
+const CLEAN_USD_PER_MONTH = 15;
+
+interface CleanLedger {
+  months: Record<string, number>;
+  done: string[];
+  failed: Record<string, string>;
+  checks: Record<string, { date: string; paras: number; ratio: number; usd: number }>;
+}
+
+async function loadClean(env: ArchiveEnv): Promise<CleanLedger> {
+  const o = await env.STORE.get(CLEAN_LEDGER_KEY);
+  const base: CleanLedger = { months: {}, done: [], failed: {}, checks: {} };
+  return o ? { ...base, ...(JSON.parse(await o.text()) as CleanLedger) } : base;
+}
+
+interface CleanTarget {
+  id: string;
+  date: string;
+  vttKey: string;
+}
+
+async function cleanTargets(env: ArchiveEnv, l: CleanLedger): Promise<CleanTarget[]> {
+  const done = new Set(l.done);
+  const out: CleanTarget[] = [];
+  for (const r of await legacyRows(env)) {
+    if (r.r2DeletedAt || !r.r2Done || done.has(r.uuid) || l.failed[r.uuid]) continue;
+    const t = r.files.find((f) => f.type === "TRANSCRIPT" && f.r2Done && f.r2Key && f.size > 0);
+    if (t) out.push({ id: r.uuid, date: r.date, vttKey: t.r2Key as string });
+  }
+  let cursor: string | undefined;
+  for (let g = 0; g < 50; g++) {
+    const page = await env.STORE.list({ prefix: "job/", cursor });
+    for (const o of page.objects) {
+      const got = await env.STORE.get(o.key);
+      if (!got) continue;
+      try {
+        const j = JSON.parse(await got.text()) as { recId: string; date?: string; r2Key?: string; r2VttDone?: boolean; r2DeletedAt?: string };
+        if (!j.r2VttDone || !j.r2Key || j.r2DeletedAt || done.has(j.recId) || l.failed[j.recId]) continue;
+        out.push({ id: j.recId, date: j.date ?? "", vttKey: j.r2Key.replace(/\.mp4$/i, ".vtt") });
+      } catch {
+        /* 読めない控えはとばす */
+      }
+    }
+    if (!page.truncated) break;
+    cursor = page.cursor;
+  }
+  return out.sort((a, b) => (a.date < b.date ? 1 : -1));
+}
+
+async function handleClean(req: Request, env: ArchiveEnv, url: URL): Promise<Response> {
+  const l = await loadClean(env);
+  const month = jstDate().slice(0, 7);
+  const used = l.months[month] ?? 0;
+  const stop = used >= CLEAN_USD_PER_MONTH ? `今月の整えた版の上限 $${CLEAN_USD_PER_MONTH} に届いた（$${used.toFixed(2)}）` : undefined;
+
+  if (url.pathname === "/transcribe/clean-next") {
+    if (stop) return json({ ok: true, stop, rows: [] });
+    const limit = Math.max(1, Math.min(600, Number(url.searchParams.get("limit") ?? "5") || 5));
+    const all = await cleanTargets(env, l);
+    const pick = (url.searchParams.get("ids") ?? "").split(",").filter(Boolean);
+    const rows = (pick.length ? all.filter((t) => pick.includes(t.id)) : all).slice(0, limit).map((t) => ({ id: t.id, date: t.date }));
+    return json({ ok: true, remaining: all.length, usd_month: Math.round(used * 1000) / 1000, usd_stop: CLEAN_USD_PER_MONTH, rows });
+  }
+  if (url.pathname === "/transcribe/clean-budget") {
+    return json({ ok: true, usd_month: used, ...(stop ? { stop } : {}) });
+  }
+
+  const id = url.searchParams.get("id") ?? "";
+  if (!id) return json({ ok: false, error: "番号が無い" }, 400);
+
+  if (url.pathname === "/transcribe/clean-src") {
+    const t = (await cleanTargets(env, { ...l, done: [], failed: {} })).find((x) => x.id === id);
+    const o = t ? await env.STORE.get(t.vttKey) : null;
+    if (!o) return json({ ok: false, error: "文字起こしが無い" }, 404);
+    // 見る画面と同じく、話者は「シアニン」「参加者 N」に伏せ、本文の中の名前も伏せたものを渡す
+    return json({ ok: true, cues: await cuesForPlayer(await o.text()) });
+  }
+
+  if (url.pathname === "/transcribe/clean-put" && req.method === "POST") {
+    const b = (await req.json()) as { paras?: { t: number; w?: string; x: string }[]; in_tokens?: number; out_tokens?: number; ratio?: number; date?: string; error?: string };
+    if (b.error) {
+      l.failed[id] = b.error.slice(0, 200);
+      await env.STORE.put(CLEAN_LEDGER_KEY, JSON.stringify(l));
+      return json({ ok: true, recorded: "failed" });
+    }
+    const paras = (b.paras ?? []).filter((p) => typeof p.t === "number" && typeof p.x === "string" && p.x.trim()).map((p) => ({ t: p.t, w: p.w ?? "", x: p.x.trim() }));
+    if (!paras.length) return json({ ok: false, error: "段落が無い" }, 400);
+    const usd = ((Number(b.in_tokens) || 0) * CLEAN_IN_PER_M + (Number(b.out_tokens) || 0) * CLEAN_OUT_PER_M) / 1e6;
+    await env.STORE.put(cleanKey(id), JSON.stringify({ model: "gpt-5-mini", at: new Date().toISOString(), paras }), { httpMetadata: { contentType: "application/json; charset=utf-8" } });
+    l.months[month] = Math.round((used + usd) * 10000) / 10000;
+    if (!l.done.includes(id)) l.done.push(id);
+    delete l.failed[id];
+    l.checks[id] = { date: b.date ?? "", paras: paras.length, ratio: Math.round((Number(b.ratio) || 0) * 100) / 100, usd: Math.round(usd * 10000) / 10000 };
+    await env.STORE.put(CLEAN_LEDGER_KEY, JSON.stringify(l));
+    return json({ ok: true, usd_month: l.months[month] });
+  }
+  return json({ ok: false, error: "見つかりません" }, 404);
+}
+
+export async function cleanSummary(env: ArchiveEnv): Promise<object> {
+  const l = await loadClean(env);
+  const checks = Object.values(l.checks);
+  return {
+    done: l.done.length,
+    failed: Object.keys(l.failed).length,
+    failures: Object.entries(l.failed).slice(0, 10).map(([id, error]) => ({ id, error })),
+    months: l.months,
+    usd_per_month_stop: CLEAN_USD_PER_MONTH,
+    usd_per_rec: checks.length ? Math.round((checks.reduce((a, c) => a + c.usd, 0) / checks.length) * 10000) / 10000 : null,
+    low_ratio: checks.filter((c) => c.ratio < 0.5).length,
+    checks: checks.slice(-10),
   };
 }

@@ -144,7 +144,137 @@ def one(row: dict, work: str) -> dict:
     return {"minutes": minutes, "parts": len(parts), "boundaries": boundaries, "jumps": jumps, "naming": r.json().get("naming")}
 
 
+CHAT = "https://api.openai.com/v1/chat/completions"
+CLEAN_MODEL = "gpt-5-mini"
+CLEAN_RULES = """あなたは日本語の編集者です。入力は話し言葉の文字起こしの一部です（各行：秒｜話者｜本文）。
+これを、話した中身をそのまま残した読み物に整えてください。
+- 「えー」「あのー」「なんか」などの言いよどみ、同じ言葉のくり返し、言い直しの前半を取る
+- 句読点を正しく打ち、話の区切りで段落に分ける（1 段落は 2〜6 文ほど）
+- 文脈から明らかな聞き間違い・変換の誤りだけ直す。迷うものは直さない
+- 話の中身を足さない・削らない・要約しない・言い換えて意味を変えない
+- 話者の名前（シアニン・参加者 N）と「（名前）」はそのまま使う。新しい名前を作らない
+- 段落の t は、その段落が始まる行の秒をそのまま入れる（入力にある数字だけを使う）
+- 話者が変わったら段落を分ける
+出力は JSON だけ：{"paras":[{"t":秒,"w":"話者","x":"本文"}]}"""
+
+
+def clean_chunk(lines: list) -> tuple:
+    text = "\n".join(f"{int(c['t'])}｜{c.get('w') or '-'}｜{c['x']}" for c in lines)
+    last = ""
+    for attempt in range(4):
+        r = requests.post(
+            CHAT,
+            headers={"Authorization": "Bearer " + os.environ["OPENAI_API_KEY"]},
+            json={"model": CLEAN_MODEL, "reasoning_effort": "minimal", "response_format": {"type": "json_object"},
+                  "messages": [{"role": "system", "content": CLEAN_RULES}, {"role": "user", "content": text}]},
+            timeout=600,
+        )
+        if r.ok:
+            j = r.json()
+            u = j.get("usage") or {}
+            try:
+                paras = json.loads(j["choices"][0]["message"]["content"]).get("paras") or []
+            except Exception:
+                last = "答えが JSON で読めない"
+                continue
+            return paras, int(u.get("prompt_tokens") or 0), int(u.get("completion_tokens") or 0)
+        last = f"OpenAI {r.status_code}"
+        if r.status_code in (401, 403):
+            raise RuntimeError(last + "（鍵が使えない）")
+        time.sleep(10 * (attempt + 1))
+    raise RuntimeError(last)
+
+
+def clean_one(row: dict) -> dict:
+    q = requests.utils.quote(row["id"], safe="")
+    src = call("GET", "/transcribe/clean-src?id=" + q, timeout=300)
+    if not src.ok:
+        raise RuntimeError(f"文字起こしを受け取れない（{src.status_code}）")
+    cues = src.json().get("cues") or []
+    if not cues:
+        raise RuntimeError("文字起こしが空")
+    # 10 分ごとに区切って送る（長い回でも 1 回の答えが切れないように）
+    chunks, cur, start = [], [], cues[0]["t"]
+    for c in cues:
+        if cur and c["t"] - start >= SEG:
+            chunks.append(cur)
+            cur, start = [], c["t"]
+        cur.append(c)
+    if cur:
+        chunks.append(cur)
+    paras, tin, tout = [], 0, 0
+    valid_t = {int(c["t"]) for c in cues}
+    for ch in chunks:
+        p, a, b = clean_chunk(ch)
+        tin += a
+        tout += b
+        lo, hi = int(ch[0]["t"]), int(ch[-1]["t"])
+        for x in p:
+            try:
+                t = int(float(x.get("t", lo)))
+            except (TypeError, ValueError):
+                t = lo
+            # 時刻は入力にある秒だけ。外れたらその区切りの範囲に収める
+            if t not in valid_t:
+                t = min(max(t, lo), hi)
+            body = " ".join(str(x.get("x", "")).split())
+            if body:
+                paras.append({"t": t, "w": str(x.get("w") or ""), "x": body})
+    paras.sort(key=lambda p: p["t"])
+    raw = sum(len(c["x"]) for c in cues)
+    ratio = (sum(len(p["x"]) for p in paras) / raw) if raw else 0
+    r = call("POST", "/transcribe/clean-put?id=" + q, json={"paras": paras, "in_tokens": tin, "out_tokens": tout, "ratio": ratio, "date": row["date"]}, timeout=300)
+    if not r.ok:
+        raise RuntimeError(f"返せない（{r.status_code}）")
+    return {"paras": len(paras), "ratio": round(ratio, 2), "chunks": len(chunks)}
+
+
+def main_clean() -> None:
+    n = limit()
+    ids = (os.environ.get("IDS_INPUT") or "").strip()
+    if not ids:
+        try:
+            with open(".github/transcribe-request.json", encoding="utf-8") as f:
+                ids = ",".join(json.load(f).get("ids") or [])
+        except Exception:
+            ids = ""
+    path = f"/transcribe/clean-next?limit={n}" + ("&ids=" + requests.utils.quote(ids, safe="") if ids else "")
+    got = call("GET", path, timeout=300).json()
+    rows = got.get("rows") or []
+    print(f"整えた版 対象 {len(rows)} 本（残り {got.get('remaining')} 本・今月 ${got.get('usd_month')}）{got.get('stop') or ''}")
+    done = timed_out = 0
+    for i, row in enumerate(rows, 1):
+        if (time.time() - STARTED) / 60 > RUN_MINUTES:
+            timed_out = 1
+            break
+        try:
+            res = clean_one(row)
+            done += 1
+            print(f"{i}. {row['date']} 段落 {res['paras']}・区切り {res['chunks']}・長さの比 {res['ratio']}")
+        except Exception as e:
+            msg = str(e)[:200]
+            print(f"{i}. {row['date']} 失敗：{msg}")
+            try:
+                call("POST", "/transcribe/clean-put?id=" + requests.utils.quote(row["id"], safe=""), json={"error": msg})
+            except Exception:
+                pass
+            if "鍵が使えない" in msg:
+                break
+        try:
+            if call("GET", "/transcribe/clean-budget", timeout=60).json().get("stop"):
+                print("今月の上限に届いた")
+                break
+        except Exception:
+            pass
+    left = n - i if rows else 0
+    if timed_out and done and left > 0:
+        chain(left, "clean")
+
+
 def main() -> None:
+    if (os.environ.get("MODE_INPUT") or "").strip() == "clean" or request_mode() == "clean":
+        main_clean()
+        return
     if not os.environ.get("OPENAI_API_KEY"):
         call("POST", "/transcribe/report", json={"sent": 0, "ok": 0, "failed": 0, "minutes": 0, "boundaries": 0, "jumps": 0, "note": "OPENAI_API_KEY が無い"})
         sys.exit("OPENAI_API_KEY が無い")
@@ -200,12 +330,24 @@ def main() -> None:
     print(json.dumps(run, ensure_ascii=False))
 
 
-def chain(left: int) -> None:
+def request_mode() -> str:
+    if (os.environ.get("MODE_INPUT") or "").strip():
+        return os.environ["MODE_INPUT"].strip()
+    if (os.environ.get("LIMIT_INPUT") or "").strip():
+        return "transcribe"
+    try:
+        with open(".github/transcribe-request.json", encoding="utf-8") as f:
+            return str(json.load(f).get("mode") or "transcribe")
+    except Exception:
+        return "transcribe"
+
+
+def chain(left: int, mode: str = "transcribe") -> None:
     # 自分の実行の鍵（GITHUB_TOKEN）で workflow_dispatch を 1 回だけ起こす
     r = requests.post(
         "https://api.github.com/repos/antoshia2n/zoom-to-youtube/actions/workflows/transcribe.yml/dispatches",
         headers={"Authorization": "Bearer " + os.environ.get("GITHUB_TOKEN", ""), "Accept": "application/vnd.github+json"},
-        json={"ref": "main", "inputs": {"limit": str(min(300, left))}},
+        json={"ref": "main", "inputs": {"limit": str(min(300, left)), "mode": mode}},
         timeout=30,
     )
     print(f"続きの実行を起こした：{r.status_code}")

@@ -22,6 +22,7 @@ import {
   mediaFor,
   newToken,
   playerCues,
+  playerClean,
   readJson,
   shortHostOk,
   streamVideo,
@@ -1010,6 +1011,7 @@ export async function memberPage(env: ArchiveEnv, id: string, videoSrc: string, 
     summary,
     chapters,
     cues: await playerCues(env, m.media.vttKey),
+    clean: await playerClean(env, m.media.cleanKey),
     hideShare: true,
   });
   return { ok: true, html, title: t };
@@ -1020,7 +1022,7 @@ export async function memberData(env: ArchiveEnv, id: string): Promise<object> {
   const m = await memberMedia(env, id);
   if (!m) return { ok: false, error: "not_found" };
   const { summary, chapters } = parseDescription(m.media.description);
-  return { ok: true, id: m.it.id, title: m.title, date: m.media.date ?? m.it.date, minutes: m.it.minutes, summary, chapters, cues: await playerCues(env, m.media.vttKey), video_key: m.media.videoKey };
+  return { ok: true, id: m.it.id, title: m.title, date: m.media.date ?? m.it.date, minutes: m.it.minutes, summary, chapters, cues: await playerCues(env, m.media.vttKey), clean: await playerClean(env, m.media.cleanKey), video_key: m.media.videoKey };
 }
 
 /** 第31版：置き場を指して流す（棚の一覧を読まない）。mp4 だけ */

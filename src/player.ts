@@ -131,6 +131,8 @@ export interface PlayerPage {
   summary: string;
   chapters: PlayerChapter[];
   cues: PlayerCue[];
+  /** 第51版：整えた版（段落ごと・t は段落の最初の時刻）。無ければ空 */
+  clean?: PlayerCue[];
   /** 会員サイトの中で流すとき：リンクのコピーを出さない（外に住所を出さない） */
   hideShare?: boolean;
 }
@@ -195,6 +197,7 @@ export function playerHtml(p: PlayerPage): string {
       ${
         hasT
           ? `<div id="panelT" role="tabpanel" aria-labelledby="tabT" class="panel">
+        ${(p.clean ?? []).length ? `<div class="mode" role="group" aria-label="文字起こしの形"><button type="button" id="modeRaw" aria-pressed="true">そのまま</button><button type="button" id="modeClean" aria-pressed="false">整えた版</button></div><div class="list clean" id="clean" hidden></div>` : ""}
         <div class="find"><input id="q" type="search" placeholder="文字起こしの中を探す" aria-label="文字起こしの中を探す"><span class="hits" id="hits" aria-live="polite"></span></div>
         <div class="list" id="lines"></div>
         <div class="follow"><span id="followTxt">再生に合わせて送っています</span><button type="button" id="followBtn" hidden>今の位置へ戻る</button></div>
@@ -210,7 +213,7 @@ export function playerHtml(p: PlayerPage): string {
 </main>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script>
-const P=${jsonInScript({ chapters: p.chapters, cues: p.cues, share: p.shareUrl, key: p.key })};
+const P=${jsonInScript({ chapters: p.chapters, cues: p.cues, clean: p.clean ?? [], share: p.shareUrl, key: p.key })};
 ${JS}
 </script>
 </body></html>`;
@@ -270,6 +273,8 @@ h1{font-size:22px;font-weight:800;margin:0;line-height:1.4}
 .tabs button[aria-selected=true]{color:var(--fg);font-weight:700;border-bottom-color:var(--accent-ink)}
 .tabs .n{font-size:12px;color:var(--faint);margin-left:4px}
 .panel{display:flex;flex-direction:column;flex:1;min-height:0}.panel[hidden]{display:none}
+.mode{display:flex;gap:6px;padding:10px 12px 0}.mode button{flex:1;min-height:36px;border:1px solid var(--line);background:transparent;color:inherit;border-radius:8px;font:inherit;cursor:pointer}.mode button[aria-pressed="true"]{background:var(--ink,#222);color:var(--bg,#fff);border-color:transparent}
+.clean .para{display:grid;grid-template-columns:52px 1fr;gap:8px;width:100%;text-align:left;border:0;background:transparent;color:inherit;font:inherit;padding:10px 12px;cursor:pointer;line-height:1.8}.clean .para:hover{background:rgba(127,127,127,.08)}.clean .para .ts{opacity:.6;font-size:12px;padding-top:4px}
 .find{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center}
 .find input{flex:1;min-width:0;border:1px solid var(--field);background:var(--panel);color:var(--fg);border-radius:8px;padding:6px 10px;font:inherit;font-size:13px}
 .find .hits{font-size:12px;color:var(--muted);white-space:nowrap}
@@ -303,6 +308,7 @@ mark{background:#fde68a;color:#1a1a1a;border-radius:3px;padding:0 1px}
 }`;
 
 const JS = String.raw`
+const CLEAN=P.clean||[];
 const CH=P.chapters,LINES=P.cues,SPEEDS=[0.75,1,1.25,1.5,1.75,2],KEY="rec:"+P.key+":";
 const $=id=>document.getElementById(id),v=$("v");
 const fmt=s=>{s=Math.max(0,Math.floor(s||0));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=String(s%60).padStart(2,"0");return h?h+":"+String(m).padStart(2,"0")+":"+x:m+":"+x};
@@ -375,4 +381,12 @@ else if(e.key==="<"||e.key===","){const i=SPEEDS.indexOf(speed);if(i>0)setSpeed(
 else if((e.key==="c"||e.key==="C")&&$("ccBtn")){setCC(!cc);toast(cc?"字幕を出しました":"字幕を消しました")}});
 if($("copyAt"))$("copyAt").onclick=async()=>{const link=P.share+"#t"+Math.floor(v.currentTime);try{await navigator.clipboard.writeText(link);toast(fmt(v.currentTime)+" から始まるリンクをコピーしました")}catch(e){toast(link)}};
 renderLines("");setCC(cc);tab(store.get("rec:tab")==="C"?"C":"T");syncPlay();
+// 第51版：整えた版（段落）。押すとその時刻へ。そのままの方の検索と送りは今までどおり
+const cleanEl=$("clean");
+if(cleanEl&&CLEAN.length){
+cleanEl.innerHTML=CLEAN.map(c=>'<button type="button" class="para" data-t="'+c.t+'"><span class="ts">'+fmt(c.t)+'</span><span>'+(c.w?'<span class="who">'+esc(c.w)+'</span>':'')+'<span class="tx">'+esc(c.x)+'</span></span></button>').join("");
+cleanEl.addEventListener("click",e=>{const b=e.target.closest(".para");if(!b)return;v.currentTime=+b.dataset.t;if(v.paused)v.play().catch(()=>{})});
+const setMode=m=>{const c=m==="clean";$("modeRaw").setAttribute("aria-pressed",!c);$("modeClean").setAttribute("aria-pressed",c);cleanEl.hidden=!c;
+const f=document.querySelector("#panelT .find");if(f)f.hidden=c;if(linesEl)linesEl.hidden=c;const fo=document.querySelector("#panelT .follow");if(fo)fo.hidden=c;store.set("rec:tmode",m)};
+$("modeRaw").onclick=()=>setMode("raw");$("modeClean").onclick=()=>setMode("clean");setMode(store.get("rec:tmode")==="clean"?"clean":"raw")}
 `;

@@ -25,7 +25,7 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { buildArchiveList, readSheetFailures, tallyByYear, type ArchiveEnv, type ArchiveListResult, type ArchiveRow } from "./archive";
 import { recKey, type LegacyRec } from "./legacy";
-import { transcribeSummary } from "./transcribe";
+import { cleanSummary, transcribeSummary } from "./transcribe";
 import { labelsEdit, memberData, memberInfo, memberPage, memberStream, memberVideo, metaSet, refreshShelfItems, routeConfig, routeConfigSet, routeDone, routeSet, shareIssue, shareSet, shelfList, suggestKai, suggestThumbs, thumbSet, thumbsOf, weeklyCheck } from "./shelf";
 import { saveContentImages, type ContentDriveEnv, type SaveContentImagesInput } from "./content-drive";
 import { uploadAbort, uploadComplete, uploadPart, uploadStart } from "./upload";
@@ -91,7 +91,7 @@ export class ArchiveApi extends WorkerEntrypoint<ArchiveEnv> {
     // 第46版：年ごと × naming ごとの本数と長さの合計（分）。長さが取れない録画は no_length に本数だけ
     const tally = tallyByYear(r.rows ?? []);
     // 第47版：OpenAI の文字起こしの進み（本数・分・費用・最後の実行）
-    const transcribe = await transcribeSummary(this.env);
+    const transcribe = { ...(await transcribeSummary(this.env)), clean: await cleanSummary(this.env) };
     if (opts?.include_rows) return { ...r, ...tally, transcribe };
     const { rows: _rows, ...rest } = r;
     void _rows;

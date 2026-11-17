@@ -301,6 +301,8 @@ function closed(why: string, status: number): Response {
 interface Media {
   videoKey: string;
   vttKey: string | null;
+  /** 第51版：整えた版の置き場（録画の番号で持つ。名前をそろえる段で動かないように） */
+  cleanKey?: string | null;
   date?: string;
   description?: string;
 }
@@ -318,11 +320,11 @@ export async function mediaFor(env: ShareEnv, rec: ShareRec): Promise<Media | nu
     const v = mainVideo(r.files);
     if (!v?.r2Key) return null;
     const t = r.files.find((f) => f.type === "TRANSCRIPT" && f.r2Done && f.r2Key);
-    return { videoKey: v.r2Key, vttKey: t?.r2Key ?? null, date: r.date, description: r.naming?.description };
+    return { videoKey: v.r2Key, vttKey: t?.r2Key ?? null, cleanKey: cleanKey(r.uuid), date: r.date, description: r.naming?.description };
   }
   const job = await readJson<ShareJob>(env.STORE, rec.jobKey);
   if (!job || !job.r2Key || job.r2DeletedAt) return null;
-  return { videoKey: job.r2Key, vttKey: job.r2Key.replace(/\.mp4$/i, ".vtt"), date: job.date, description: job.naming?.description };
+  return { videoKey: job.r2Key, vttKey: job.r2Key.replace(/\.mp4$/i, ".vtt"), cleanKey: cleanKey(job.recId), date: job.date, description: job.naming?.description };
 }
 
 /** 開けるかを確かめ、開けるなら控えと今の置き場を返す */
@@ -335,6 +337,22 @@ async function open(env: ShareEnv, token: string): Promise<{ rec: ShareRec; medi
   const media = await mediaFor(env, rec);
   if (!media) return { why: "録画が見つかりません。", status: 404 };
   return { rec, media };
+}
+
+/** 第51版：整えた版の置き場 */
+export const cleanKey = (id: string) => "clean/" + id.replace(/[^A-Za-z0-9._-]/g, "_") + ".json";
+
+/** 第51版：整えた版（段落の並び）。無ければ空 */
+export async function playerClean(env: ShareEnv, key: string | null | undefined): Promise<PlayerCue[]> {
+  if (!key) return [];
+  const o = await env.STORE.get(key);
+  if (!o) return [];
+  try {
+    const j = JSON.parse(await o.text()) as { paras?: PlayerCue[] };
+    return (j.paras ?? []).filter((p) => typeof p.t === "number" && typeof p.x === "string");
+  } catch {
+    return [];
+  }
 }
 
 /** 文字起こし（映像の隣の .vtt）を見る画面の形で。無ければ空 */
@@ -396,6 +414,7 @@ export async function handleShare(request: Request, env: ShareEnv): Promise<Resp
       summary,
       chapters,
       cues: await playerCues(env, media.vttKey),
+      clean: await playerClean(env, media.cleanKey),
     });
     return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", ...NO_INDEX } });
   }
