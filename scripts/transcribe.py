@@ -135,7 +135,7 @@ def one(row: dict, work: str) -> dict:
         raise RuntimeError("文字起こしが空")
     vtt = "WEBVTT\n\n" + "\n".join(f"{n}\n{stamp(a)} --> {stamp(b)}\n{t}\n" for n, (a, b, t) in enumerate(cues, 1))
     minutes = round(total / 60, 1)
-    r = call("POST", "/transcribe/put?id=" + requests.utils.quote(row["id"], safe=""), json={"vtt": vtt, "minutes": minutes})
+    r = call("POST", "/transcribe/put?id=" + requests.utils.quote(row["id"], safe=""), json={"vtt": vtt, "minutes": minutes, "parts": len(parts), "boundaries": boundaries, "jumps": jumps}, timeout=300)
     if not r.ok:
         raise RuntimeError(f"返せない（{r.status_code}）")
     return {"minutes": minutes, "parts": len(parts), "boundaries": boundaries, "jumps": jumps, "naming": r.json().get("naming")}
@@ -146,7 +146,7 @@ def main() -> None:
         call("POST", "/transcribe/report", json={"sent": 0, "ok": 0, "failed": 0, "minutes": 0, "boundaries": 0, "jumps": 0, "note": "OPENAI_API_KEY が無い"})
         sys.exit("OPENAI_API_KEY が無い")
     n = limit()
-    nx = call("GET", f"/transcribe/next?limit={n}")
+    nx = call("GET", f"/transcribe/next?limit={n}", timeout=300)
     nx.raise_for_status()
     got = nx.json()
     rows = got.get("rows") or []
@@ -174,7 +174,11 @@ def main() -> None:
                     break
         # 費用の上限は zoom-to-youtube 側が持つ。届いていたら次を渡さないので、1 本ごとに聞き直す
         if i < len(rows):
-            chk = call("GET", "/transcribe/next?limit=1").json()
+            try:
+                chk = call("GET", "/transcribe/budget", timeout=60).json()
+            except Exception as e:
+                print("費用の確かめに失敗：" + type(e).__name__)
+                chk = {}
             if chk.get("stop"):
                 print(chk["stop"])
                 break
