@@ -25,6 +25,9 @@ const USD_PER_MIN = 0.006;
 const USD_STOP = 80;
 const LEDGER_KEY = "transcribe/ledger.json";
 const JWKS_KEY = "transcribe/jwks.json";
+const REJECT_KEY = "transcribe/last-reject.json";
+/** 断ったときに見比べる値（鍵ではない・どの実行から来たかだけ） */
+let lastClaims: Record<string, unknown> | null = null;
 
 export interface TranscribeLedger {
   /** 日本時間の日付 → その日に送った分 */
@@ -90,6 +93,7 @@ async function jwks(env: ArchiveEnv, fresh: boolean): Promise<{ keys: (JsonWebKe
 
 /** 通れば null、通らなければ理由 */
 export async function checkGithub(env: ArchiveEnv, req: Request): Promise<string | null> {
+  lastClaims = null;
   const m = (req.headers.get("authorization") ?? "").match(/^Bearer\s+(.+)$/);
   if (!m) return "本人確認が無い";
   const parts = m[1].split(".");
@@ -102,6 +106,7 @@ export async function checkGithub(env: ArchiveEnv, req: Request): Promise<string
   } catch {
     return "本人確認が読めない";
   }
+  lastClaims = { iss: claims.iss, aud: claims.aud, repository: claims.repository, ref: claims.ref, job_workflow_ref: claims.job_workflow_ref, event_name: claims.event_name };
   if (head.alg !== "RS256") return "本人確認の方式が違う";
   let set = await jwks(env, false);
   let jwk = set.keys.find((k) => k.kid === head.kid);
@@ -142,8 +147,17 @@ function targets(recs: LegacyRec[], l: TranscribeLedger): LegacyRec[] {
 }
 
 export async function handleTranscribe(req: Request, env: ArchiveEnv, url: URL): Promise<Response> {
-  const why = await checkGithub(env, req);
-  if (why) return json({ ok: false, error: why }, 401);
+  let why: string | null;
+  try {
+    why = await checkGithub(env, req);
+  } catch (e) {
+    why = `本人確認の途中で止まった：${e instanceof Error ? e.message.slice(0, 200) : String(e)}`;
+  }
+  if (why) {
+    // 第48版：断った理由を 1 つだけ控える（実行の記録が見えなくても zoom_archive__list で分かるように）
+    await env.STORE.put(REJECT_KEY, JSON.stringify({ at: new Date().toISOString(), path: url.pathname, why, seen: lastClaims }));
+    return json({ ok: false, error: why }, 401);
+  }
   const l = await loadLedger(env);
 
   if (url.pathname === "/transcribe/next") {
@@ -229,7 +243,9 @@ export async function handleTranscribe(req: Request, env: ArchiveEnv, url: URL):
 /** zoom_archive__list に出す控え（題名なし） */
 export async function transcribeSummary(env: ArchiveEnv): Promise<object> {
   const l = await loadLedger(env);
+  const rj = await env.STORE.get(REJECT_KEY);
   return {
+    last_reject: rj ? JSON.parse(await rj.text()) : null,
     done: l.done.length,
     failed: Object.keys(l.failed).length,
     failures: Object.entries(l.failed).slice(0, 10).map(([id, error]) => ({ id, error })),
