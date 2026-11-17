@@ -19,6 +19,9 @@ import requests
 BASE = "https://zoom-to-youtube.gameister1.workers.dev"
 AUDIENCE = "zoom-to-youtube-transcribe"
 SEG = 600  # 10 分
+# 第50版：1 回の実行で新しい録画を取り始めるのは 300 分まで（実行の上限 340 分の手前）。残りは次の実行を自分で起こす
+RUN_MINUTES = 300
+STARTED = time.time()
 OPENAI = "https://api.openai.com/v1/audio/transcriptions"
 
 
@@ -152,7 +155,12 @@ def main() -> None:
     rows = got.get("rows") or []
     print(f"対象 {len(rows)} 本（残り {got.get('remaining')} 本・ここまでの費用 ${got.get('usd')}）{got.get('stop') or ''}")
     run = {"sent": 0, "ok": 0, "failed": 0, "minutes": 0.0, "boundaries": 0, "jumps": 0}
+    timed_out = False
     for i, row in enumerate(rows, 1):
+        if (time.time() - STARTED) / 60 > RUN_MINUTES:
+            timed_out = True
+            print(f"{RUN_MINUTES} 分を過ぎたので、ここで切って次の実行へ渡す")
+            break
         run["sent"] += 1
         with tempfile.TemporaryDirectory() as work:
             try:
@@ -181,10 +189,26 @@ def main() -> None:
                 chk = {}
             if chk.get("stop"):
                 print(chk["stop"])
+                run["note"] = "費用の上限で止めた"
                 break
     run["minutes"] = round(run["minutes"], 1)
+    left = n - run["sent"]
+    if timed_out and run["ok"] > 0 and left > 0 and not run.get("note"):
+        run["note"] = f"続きを起こした（あと {left} 本まで）"
+        chain(left)
     call("POST", "/transcribe/report", json=run)
     print(json.dumps(run, ensure_ascii=False))
+
+
+def chain(left: int) -> None:
+    # 自分の実行の鍵（GITHUB_TOKEN）で workflow_dispatch を 1 回だけ起こす
+    r = requests.post(
+        "https://api.github.com/repos/antoshia2n/zoom-to-youtube/actions/workflows/transcribe.yml/dispatches",
+        headers={"Authorization": "Bearer " + os.environ.get("GITHUB_TOKEN", ""), "Accept": "application/vnd.github+json"},
+        json={"ref": "main", "inputs": {"limit": str(min(300, left))}},
+        timeout=30,
+    )
+    print(f"続きの実行を起こした：{r.status_code}")
 
 
 if __name__ == "__main__":

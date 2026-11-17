@@ -17,6 +17,7 @@ on:
 permissions:
   id-token: write
   contents: read
+  actions: write
 
 concurrency:
   group: transcribe
@@ -34,6 +35,7 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           LIMIT_INPUT: ${{ github.event.inputs.limit }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pip install -q requests
           python3 scripts/transcribe.py
