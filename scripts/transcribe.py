@@ -101,7 +101,7 @@ def whisper(path: str) -> list:
         last = f"OpenAI {r.status_code} {code}".strip()
         if r.status_code in (401, 403):
             raise RuntimeError(last + "（鍵が使えない）")
-        if code == "insufficient_quota":
+        if code in ("insufficient_quota", "credit_balance_exhausted"):
             raise RuntimeError(last + "（クレジット切れ）")
         wait_for(r, attempt)
     raise RuntimeError(last)
@@ -202,7 +202,7 @@ def clean_chunk(lines: list) -> tuple:
         last = f"OpenAI {r.status_code} {code}".strip()
         if r.status_code in (401, 403):
             raise RuntimeError(last + "（鍵が使えない）")
-        if code == "insufficient_quota":
+        if code in ("insufficient_quota", "credit_balance_exhausted"):
             raise RuntimeError(last + "（クレジット切れ）")
         wait_for(r, attempt)
     raise RuntimeError(last)
