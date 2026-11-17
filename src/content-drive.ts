@@ -33,7 +33,7 @@ export interface SaveContentImagesInput {
   title: string;
   /** 投稿の予定日（YYYY-MM-DD…）。無ければ「日付なし」 */
   date?: string | null;
-  /** 中のフォルダの名前（引用図解・サムネ・記事内図解） */
+  /** 中のフォルダの名前（引用図解・サムネ・記事内図解・画像ポスト） */
   sub: string;
   /** 画像。並びの順に 01・02… の名前で置く */
   images: { url: string; mime?: string }[];
@@ -171,7 +171,8 @@ export async function saveContentImages(env: ContentDriveEnv, input: SaveContent
   try {
     const postId = String(input.post_id ?? "").trim();
     if (!postId) return { ok: false, error: "post_id が空です" };
-    const imgs = (input.images || []).filter((i) => /^https:\/\//.test(i.url)).slice(0, 12);
+    // 第45版（2026-11-17）：X の 1 ポスト 20 枚に合わせて 12 → 20 枚（GPT で作った画像ポストを全部写す）
+    const imgs = (input.images || []).filter((i) => /^https:\/\//.test(i.url)).slice(0, 20);
     if (!imgs.length) return { ok: false, error: "置く画像がありません" };
     const date = /^\d{4}-\d{2}-\d{2}/.test(input.date || "") ? String(input.date).slice(0, 10) : "";
     const month = date ? date.slice(0, 7) : "日付なし";
