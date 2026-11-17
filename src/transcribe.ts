@@ -143,10 +143,16 @@ function audioOf(r: LegacyRec): LegacyFile | null {
   return v && v.r2Done && v.r2Key && v.size > 0 ? v : null;
 }
 
+/** 第52版：OpenAI の 429（回数の上限・クレジット切れ）と通信の失敗は、もう一度回す */
+function hardFail(why: string | undefined): boolean {
+  if (!why) return false;
+  return !/OpenAI 429|OpenAI 5\d\d|Timeout|Connection|受け取れない|返せない/.test(why);
+}
+
 function targets(recs: LegacyRec[], l: TranscribeLedger): LegacyRec[] {
   const done = new Set(l.done);
   return recs
-    .filter((r) => r.naming?.mode === "no_transcript" && r.r2Done && !r.r2DeletedAt && !done.has(r.uuid) && !l.failed[r.uuid] && audioOf(r))
+    .filter((r) => r.naming?.mode === "no_transcript" && r.r2Done && !r.r2DeletedAt && !done.has(r.uuid) && !hardFail(l.failed[r.uuid]) && audioOf(r))
     .sort((a, b) => (a.date < b.date ? 1 : -1));
 }
 
@@ -296,7 +302,8 @@ export async function transcribeSummary(env: ArchiveEnv): Promise<object> {
     last_reject: rj ? JSON.parse(await rj.text()) : null,
     done: l.done.length,
     failed: Object.keys(l.failed).length,
-    failures: Object.entries(l.failed).slice(0, 10).map(([id, error]) => ({ id, error })),
+    failures: Object.entries(l.failed).slice(-10).map(([id, error]) => ({ id, error })),
+    failed_by: Object.values(l.failed).reduce((a: Record<string, number>, e) => ((a[e.slice(0, 40)] = (a[e.slice(0, 40)] ?? 0) + 1), a), {}),
     minutes: l.minutes,
     usd: l.usd,
     usd_stop: USD_STOP,
@@ -341,7 +348,7 @@ async function cleanTargets(env: ArchiveEnv, l: CleanLedger): Promise<CleanTarge
   const done = new Set(l.done);
   const out: CleanTarget[] = [];
   for (const r of await legacyRows(env)) {
-    if (r.r2DeletedAt || !r.r2Done || done.has(r.uuid) || l.failed[r.uuid]) continue;
+    if (r.r2DeletedAt || !r.r2Done || done.has(r.uuid) || hardFail(l.failed[r.uuid])) continue;
     const t = r.files.find((f) => f.type === "TRANSCRIPT" && f.r2Done && f.r2Key && f.size > 0);
     if (t) out.push({ id: r.uuid, date: r.date, vttKey: t.r2Key as string });
   }
@@ -353,7 +360,7 @@ async function cleanTargets(env: ArchiveEnv, l: CleanLedger): Promise<CleanTarge
       if (!got) continue;
       try {
         const j = JSON.parse(await got.text()) as { recId: string; date?: string; r2Key?: string; r2VttDone?: boolean; r2DeletedAt?: string };
-        if (!j.r2VttDone || !j.r2Key || j.r2DeletedAt || done.has(j.recId) || l.failed[j.recId]) continue;
+        if (!j.r2VttDone || !j.r2Key || j.r2DeletedAt || done.has(j.recId) || hardFail(l.failed[j.recId])) continue;
         out.push({ id: j.recId, date: j.date ?? "", vttKey: j.r2Key.replace(/\.mp4$/i, ".vtt") });
       } catch {
         /* 読めない控えはとばす */

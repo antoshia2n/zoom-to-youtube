@@ -67,9 +67,26 @@ def duration(path: str) -> float:
         return 0.0
 
 
+def openai_error(r: requests.Response) -> str:
+    # 第52版：429 が「回数の上限」か「クレジット切れ」かを見分ける（中身は出さず、種類だけ）
+    try:
+        e = (r.json() or {}).get("error") or {}
+        return str(e.get("code") or e.get("type") or "")
+    except Exception:
+        return ""
+
+
+def wait_for(r: requests.Response, attempt: int) -> None:
+    try:
+        sec = float(r.headers.get("retry-after") or 0)
+    except ValueError:
+        sec = 0
+    time.sleep(max(sec, 20 * (attempt + 1)))
+
+
 def whisper(path: str) -> list:
     last = ""
-    for attempt in range(4):
+    for attempt in range(6):
         with open(path, "rb") as f:
             r = requests.post(
                 OPENAI,
@@ -80,10 +97,13 @@ def whisper(path: str) -> list:
             )
         if r.ok:
             return r.json().get("segments") or []
-        last = f"OpenAI {r.status_code}"
+        code = openai_error(r)
+        last = f"OpenAI {r.status_code} {code}".strip()
         if r.status_code in (401, 403):
             raise RuntimeError(last + "（鍵が使えない）")
-        time.sleep(10 * (attempt + 1))
+        if code == "insufficient_quota":
+            raise RuntimeError(last + "（クレジット切れ）")
+        wait_for(r, attempt)
     raise RuntimeError(last)
 
 
@@ -178,10 +198,13 @@ def clean_chunk(lines: list) -> tuple:
                 last = "答えが JSON で読めない"
                 continue
             return paras, int(u.get("prompt_tokens") or 0), int(u.get("completion_tokens") or 0)
-        last = f"OpenAI {r.status_code}"
+        code = openai_error(r)
+        last = f"OpenAI {r.status_code} {code}".strip()
         if r.status_code in (401, 403):
             raise RuntimeError(last + "（鍵が使えない）")
-        time.sleep(10 * (attempt + 1))
+        if code == "insufficient_quota":
+            raise RuntimeError(last + "（クレジット切れ）")
+        wait_for(r, attempt)
     raise RuntimeError(last)
 
 
@@ -258,7 +281,7 @@ def main_clean() -> None:
                 call("POST", "/transcribe/clean-put?id=" + requests.utils.quote(row["id"], safe=""), json={"error": msg})
             except Exception:
                 pass
-            if "鍵が使えない" in msg:
+            if "鍵が使えない" in msg or "クレジット切れ" in msg:
                 break
         try:
             if call("GET", "/transcribe/clean-budget", timeout=60).json().get("stop"):
@@ -308,7 +331,8 @@ def main() -> None:
                     call("POST", "/transcribe/put?id=" + requests.utils.quote(row["id"], safe=""), json={"error": msg})
                 except Exception:
                     pass
-                if "鍵が使えない" in msg:
+                if "鍵が使えない" in msg or "クレジット切れ" in msg:
+                    run["note"] = msg
                     break
         # 費用の上限は zoom-to-youtube 側が持つ。届いていたら次を渡さないので、1 本ごとに聞き直す
         if i < len(rows):
