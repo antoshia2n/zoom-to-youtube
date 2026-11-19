@@ -1,11 +1,14 @@
 """
-zoom-to-youtube / scripts/edit.py（第53・54版・2026-11-19 開発部・動画の自動編集 便 1・テロップの作り直し）
+zoom-to-youtube / scripts/edit.py（第53〜55版・2026-11-19 開発部・動画の自動編集 便 1・2）
 
 GitHub Actions の中で動く。録画 1 本を zoom-to-youtube から受け取り、ffmpeg で
   ・ジェットカット（無音を詰める。間は 0.4 秒だけ残す）
   ・音質の改善（低い雑音を切る・雑音を減らす・音量を YouTube の目安 -16LUFS にそろえる）
   ・テロップ（第54版：文字起こしの全文ではなく、AI が要約した短い言葉を 3 種の型で焼き込む
       A 通常＝白い字に二重のふち・下／B 強調＝黄色の大きな字でポンと出す・下／C キーワード＝中央にオレンジの板で 3.5 秒）
+  ・音とメリハリ（第55版・便 2）：B で「ポン」と 1.1 倍の寄り、C で「ジャン」、上の帯の切り替えで「シュッ」。
+      BGM は声の下で小さく流し、話題が変わる 3 秒だけ少し上げる。音は scripts/edit_sounds.py が数式から作ったもの（assets/edit/）
+  ・テロップの量：edit-request.json の density（less／normal／more）。無ければ 30 分未満は more、それ以上は normal
   ・上の帯（目次の見出しを、話題が変わるたびに左上へ出す。左にオレンジの帯・サムネの型 A と同じ色）
 をかけて、編集版を棚へ「【編集版】…」として返す。
 
@@ -40,7 +43,11 @@ BLACK = "&H00000000"
 WHITE = "&H00FFFFFF"
 LINE_CHARS = 16        # テロップ 1 行の字数
 PLAN_CHUNK = 40        # AI に 1 回で渡す文字起こしの行数
-VER = "v2"             # 編集版の題名に付ける版（同じ録画を作り直したとき見分けるため）
+ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "edit")
+ZOOM = 1.1             # B 強調で寄る倍率
+BGM_VOL, BGM_UP = 0.11, 0.2   # BGM のふだんの大きさと、話題が変わるときの大きさ
+SE_VOL = {"pop": 0.5, "jan": 0.45, "whoosh": 0.35}
+VER = "v3"             # 編集版の題名に付ける版（同じ録画を作り直したとき見分けるため）
 FILLERS = re.compile(r"(えー+と?|ええと|えっと|あのー+|うーん|んー+|まあまあ)[、。,\s]*")
 
 
@@ -115,14 +122,14 @@ def upload(rid: str, path: str) -> str:
     return uid
 
 
-def plan_telops(cues: list) -> tuple:
+def plan_telops(cues: list, density: str = "normal") -> tuple:
     """文字起こしを PLAN_CHUNK 行ずつ AI に渡し、要約テロップ（元の秒・型・言葉）を受け取る"""
     out, failed = [], 0
     for k in range(0, len(cues), PLAN_CHUNK):
         part = cues[k:k + PLAN_CHUNK]
         lines = [[k + j, round(a, 1), t] for j, (a, b, t) in enumerate(part)]
         try:
-            r = call("POST", "/edit/plan", json={"lines": lines}, timeout=300)
+            r = call("POST", "/edit/plan", json={"lines": lines, "density": density}, timeout=300)
             j = r.json()
         except Exception:
             j = {"ok": False}
@@ -349,36 +356,82 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     return head + "\n".join(ev) + "\n", n_telop, n_band
 
 
-def render(src: str, ass: str, segs: list, out: str, work: str) -> None:
-    expr = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in segs)
-    graph = (
-        f"[0:v]fps={FPS},select='{expr}',setpts=N/{FPS}/TB,subtitles='{ass}'[v];"
-        f"[0:a]aselect='{expr}',asetpts=N/SR/TB,highpass=f=80,afftdn=nf=-25,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000[a]"
-    )
+def between_expr(wins: list) -> str:
+    return "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in wins) or "0"
+
+
+def render(src: str, ass: str, segs: list, out: str, work: str, info: dict, fx: dict, total: float) -> None:
+    expr = between_expr(segs)
+    w, h = info["w"] // 2 * 2, info["h"] // 2 * 2
+    parts = [f"[0:v]fps={FPS},select='{expr}',setpts=N/{FPS}/TB,scale={w}:{h}[cut]"]
+    if fx["zoom"]:
+        parts.append(f"[cut]split[b0][z0];[z0]crop=iw/{ZOOM}:ih/{ZOOM},scale={w}:{h}[z];[b0][z]overlay=enable='{between_expr(fx['zoom'])}'[vz]")
+        parts.append(f"[vz]subtitles='{ass}'[v]")
+    else:
+        parts.append(f"[cut]subtitles='{ass}'[v]")
+    parts.append(f"[0:a]aselect='{expr}',asetpts=N/SR/TB,highpass=f=80,afftdn=nf=-25,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000[voice]")
+    parts.append(f"[1:a]atrim=0:{total:.3f},asetpts=N/SR/TB,volume=eval=frame:volume='if({between_expr(fx['up'])},{BGM_UP},{BGM_VOL})'[bg]")
+    mix = ["[voice]", "[bg]"]
+    inputs = ["-i", src, "-stream_loop", "-1", "-i", os.path.join(ASSETS, "bgm.flac")]
+    for k, name in enumerate(["pop", "jan", "whoosh"]):
+        ts = fx[name]
+        if not ts:
+            continue
+        idx = inputs.count("-i")
+        inputs += ["-i", os.path.join(ASSETS, name + ".wav")]
+        outs = "".join(f"[{name}{i}]" for i in range(len(ts)))
+        parts.append(f"[{idx}:a]volume={SE_VOL[name]},asplit={len(ts)}{outs}" if len(ts) > 1 else f"[{idx}:a]volume={SE_VOL[name]}[{name}0]")
+        for i, t in enumerate(ts):
+            parts.append(f"[{name}{i}]adelay=delays={int(t * 1000)}:all=1[{name}d{i}]")
+            mix.append(f"[{name}d{i}]")
+    parts.append(f"{''.join(mix)}amix=inputs={len(mix)}:duration=first:normalize=0,alimiter=limit=0.95,aresample=48000[a]")
     script = os.path.join(work, "graph.txt")
     with open(script, "w", encoding="utf-8") as f:
-        f.write(graph)
+        f.write(";".join(parts))
     subprocess.run(
-        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-stats_period", "60", "-y", "-i", src, "-filter_complex_script", script,
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *inputs, "-filter_complex_script", script,
          "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
          "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", out],
         check=True,
     )
 
 
-def edit(src: str, vtt: str, chapters: list, out: str, work: str, telops: list = None) -> dict:
+def effects(telops: list, chapters: list, tl: Timeline) -> dict:
+    """音と寄りの時刻（詰めたあとの秒）"""
+    fx = {"pop": [], "jan": [], "whoosh": [], "zoom": [], "up": []}
+    for t in telops:
+        s_, e_ = tl.map(t["a"]), tl.map(min(t["b"], t["a"] + 8.0))
+        if e_ - s_ < 0.6 and t["type"] != "B":
+            continue
+        if t["type"] == "B":
+            fx["pop"].append(s_)
+            fx["zoom"].append((s_, min(max(e_, s_ + 1.4), s_ + 2.5)))
+        elif t["type"] == "C":
+            fx["jan"].append(s_)
+    for c in chapters:
+        if float(c.get("t", 0)) > 1:
+            s_ = tl.map(float(c["t"]))
+            fx["whoosh"].append(s_)
+            fx["up"].append((s_, s_ + 3.0))
+    return fx
+
+
+def edit(src: str, vtt: str, chapters: list, out: str, work: str, telops: list = None, density: str = "") -> dict:
     info = probe(src)
     segs = speech_segments(src, info["dur"])
     tl = Timeline(segs)
     cues = parse_vtt(vtt) if vtt else []
     failed = 0
+    if density not in ("less", "normal", "more"):
+        density = "more" if info["dur"] < 30 * 60 else "normal"
     if telops is None:
-        telops, failed = plan_telops(cues) if cues else ([], 0)
+        telops, failed = plan_telops(cues, density) if cues else ([], 0)
     ass_text, n_telop, n_band = build_ass(info["w"], info["h"], telops, chapters, tl)
     ass = os.path.join(work, "edit.ass")
     with open(ass, "w", encoding="utf-8") as f:
         f.write(ass_text)
-    render(src, ass, segs, out, work)
+    fx = effects(telops, chapters, tl)
+    render(src, ass, segs, out, work, info, fx, tl.total)
     return {
         "before_min": round(info["dur"] / 60, 1),
         "after_min": round(tl.total / 60, 1),
@@ -387,6 +440,8 @@ def edit(src: str, vtt: str, chapters: list, out: str, work: str, telops: list =
         "telops": n_telop,
         "types": {k: sum(1 for t in telops if t["type"] == k) for k in "ABC"},
         "plan_failed": failed,
+        "density": density,
+        "sounds": {k: len(fx[k]) for k in ("pop", "jan", "whoosh")},
         "bands": n_band,
         "mb": round(os.path.getsize(out) / 1048576),
     }
@@ -403,9 +458,14 @@ def main() -> None:
         return
 
     rid = (os.environ.get("REC_ID_INPUT") or "").strip()
-    if not rid:
+    req = {}
+    try:
         with open(".github/edit-request.json", encoding="utf-8") as f:
-            rid = str(json.load(f).get("id", "")).strip()
+            req = json.load(f)
+    except Exception:
+        pass
+    if not rid:
+        rid = str(req.get("id", "")).strip()
     if not rid:
         raise SystemExit("id が無い")
     import requests
@@ -420,7 +480,7 @@ def main() -> None:
             vtt = r.text if r.ok else ""
         out = os.path.join(work, "out.mp4")
         t0 = time.time()
-        res = edit(src, vtt, src_info.get("chapters") or [], out, work)
+        res = edit(src, vtt, src_info.get("chapters") or [], out, work, density=str(req.get("density", "")))
         os.remove(src)
         res["encode_min"] = round((time.time() - t0) / 60, 1)
         uid = upload(rid, out)

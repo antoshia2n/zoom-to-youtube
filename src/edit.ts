@@ -42,12 +42,19 @@ const PLAN_INSTRUCTIONS = [
   '答えは JSON だけ：{"telops":[{"from":番号,"to":番号,"type":"A","text":"…"}]}',
 ].join("\n");
 
+/** 第55版：テロップの量（less／normal／more）。normal は第54版の量 */
+const DENSITY: Record<string, string> = {
+  less: "量：少なめ。話の節目と大事なところだけに付け、間が空いてよい。",
+  normal: "量：ふつう。",
+  more: "量：多め。雑談と段取り以外はほぼ切れ目なく付け、1 つのテロップは 1〜2 行ぶんの話をまとめる。B と C も各 1 つまで積極的に使う。",
+};
+
 function clean(s: unknown, max: number): string {
   return typeof s === "string" ? s.replace(/[\r\n\t]+/g, " ").replace(/[<>{}\\]/g, "").trim().slice(0, max) : "";
 }
 
 async function plan(env: ArchiveEnv, req: Request): Promise<Response> {
-  const b = (await req.json()) as { lines?: [number, number, string][] };
+  const b = (await req.json()) as { lines?: [number, number, string][]; density?: string };
   const lines = (b.lines ?? []).slice(0, 120).filter((l) => Array.isArray(l) && Number.isFinite(l[0]));
   if (!lines.length) return json({ ok: true, telops: [] });
   if (!env.AI) return json({ ok: false, error: "AI の結びが無い" });
@@ -56,7 +63,7 @@ async function plan(env: ArchiveEnv, req: Request): Promise<Response> {
   let why = "";
   for (let attempt = 0; attempt < 2 && !got; attempt++) {
     try {
-      const res = await env.AI!.run(AI_MODEL as keyof AiModels, { instructions: PLAN_INSTRUCTIONS, input, reasoning: { effort: "low" } } as never);
+      const res = await env.AI!.run(AI_MODEL as keyof AiModels, { instructions: PLAN_INSTRUCTIONS + "\n" + (DENSITY[b.density ?? ""] ?? DENSITY.normal), input, reasoning: { effort: "low" } } as never);
       got = parseJson(outputText(res));
       if (!got) why = "AI の答えが JSON で読めなかった";
     } catch (e) {
