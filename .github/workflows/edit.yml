@@ -1,0 +1,38 @@
+# 第53版（2026-11-19 開発部）：録画 1 本を自動で編集する（ジェットカット・音質・テロップ・上の帯）。
+# 動かし方：.github/edit-request.json の id（録画の棚の id）を書き換えて main へ上げる（または Actions の画面から手で）。
+# 編集版は録画の棚に「【編集版】…」（ラベル：自動編集）で並ぶ。
+# 実行の記録は公開なので、題名・目次・文字起こしの中身は出さない。
+name: edit
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/edit-request.json"]
+  workflow_dispatch:
+    inputs:
+      id:
+        description: "録画の棚の id"
+        default: ""
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: edit
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - name: ffmpeg と日本語の字
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-noto-cjk > /dev/null
+      - name: edit
+        env:
+          REC_ID_INPUT: ${{ github.event.inputs.id }}
+        run: |
+          pip install -q requests
+          python3 scripts/edit.py
