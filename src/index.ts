@@ -132,6 +132,7 @@ import {
 import { legacyRows, mainVideo, migrateLegacy } from "./legacy";
 import { purgeZoom } from "./purge";
 import { handleTranscribe } from "./transcribe";
+import { handleEdit } from "./edit";
 import { handleShare, syncShares, SHORT_HOST, type YoutubeCandidate } from "./share";
 import { refreshShelfItems, shelfMetaById, shelfYoutubeCandidates, suggestKai, suggestThumbs } from "./shelf";
 
@@ -2178,6 +2179,11 @@ export default {
     // 第47版：GitHub Actions からの文字起こしの受け渡し（GitHub の本人確認だけを受ける）
     if (url.pathname.startsWith("/transcribe/")) {
       return handleTranscribe(request, env, url);
+    }
+
+    // 第53版：GitHub Actions からの自動編集の受け渡し（GitHub の本人確認だけを受ける）
+    if (url.pathname.startsWith("/edit/")) {
+      return handleEdit(request, env, url);
     }
 
     switch (url.pathname) {

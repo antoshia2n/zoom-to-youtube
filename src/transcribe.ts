@@ -96,7 +96,8 @@ async function jwks(env: ArchiveEnv, fresh: boolean): Promise<{ keys: (JsonWebKe
 }
 
 /** 通れば null、通らなければ理由 */
-export async function checkGithub(env: ArchiveEnv, req: Request): Promise<string | null> {
+/** 第53版：自動編集（edit.yml）からも使う。宛先と流れの名前だけを替える */
+export async function checkGithub(env: ArchiveEnv, req: Request, aud: string = AUDIENCE, workflow: string = WORKFLOW): Promise<string | null> {
   lastClaims = null;
   const m = (req.headers.get("authorization") ?? "").match(/^Bearer\s+(.+)$/);
   if (!m) return "本人確認が無い";
@@ -124,11 +125,11 @@ export async function checkGithub(env: ArchiveEnv, req: Request): Promise<string
   if (!ok) return "本人確認の署名が合わない";
   const now = Date.now() / 1000;
   if (claims.iss !== ISSUER) return "発行元が違う";
-  if (claims.aud !== AUDIENCE) return "宛先が違う";
+  if (claims.aud !== aud) return "宛先が違う";
   if (typeof claims.exp !== "number" || claims.exp < now) return "本人確認の期限切れ";
   if (claims.repository !== REPO) return "リポジトリが違う";
   if (claims.ref !== "refs/heads/main") return "main 以外から来た";
-  if (claims.job_workflow_ref !== WORKFLOW) return "transcribe.yml 以外から来た";
+  if (claims.job_workflow_ref !== workflow) return `${workflow.split("/").pop()?.split("@")[0]} 以外から来た`;
   return null;
 }
 
