@@ -1,10 +1,11 @@
 """
-zoom-to-youtube / scripts/edit.py（第53版・2026-11-19 開発部・動画の自動編集 便 1）
+zoom-to-youtube / scripts/edit.py（第53・54版・2026-11-19 開発部・動画の自動編集 便 1・テロップの作り直し）
 
 GitHub Actions の中で動く。録画 1 本を zoom-to-youtube から受け取り、ffmpeg で
   ・ジェットカット（無音を詰める。間は 0.4 秒だけ残す）
   ・音質の改善（低い雑音を切る・雑音を減らす・音量を YouTube の目安 -16LUFS にそろえる）
-  ・テロップ（文字起こしの時刻を、詰めたあとの時刻へ直して焼き込む）
+  ・テロップ（第54版：文字起こしの全文ではなく、AI が要約した短い言葉を 3 種の型で焼き込む
+      A 通常＝白い字に二重のふち・下／B 強調＝黄色の大きな字でポンと出す・下／C キーワード＝中央にオレンジの板で 3.5 秒）
   ・上の帯（目次の見出しを、話題が変わるたびに左上へ出す。左にオレンジの帯・サムネの型 A と同じ色）
 をかけて、編集版を棚へ「【編集版】…」として返す。
 
@@ -34,7 +35,12 @@ FONT = "Noto Sans CJK JP"
 ORANGE = "&H0045A0FF"  # ASS は &HAABBGGRR。#FFA045
 NAVY = "&H00402818"    # #182840
 WHITE_BOX = "&H18FFFFFF"
-LINE_CHARS = 20        # テロップ 1 行の字数
+YELLOW = "&H0000E6FF"   # #FFE600
+BLACK = "&H00000000"
+WHITE = "&H00FFFFFF"
+LINE_CHARS = 16        # テロップ 1 行の字数
+PLAN_CHUNK = 40        # AI に 1 回で渡す文字起こしの行数
+VER = "v2"             # 編集版の題名に付ける版（同じ録画を作り直したとき見分けるため）
 FILLERS = re.compile(r"(えー+と?|ええと|えっと|あのー+|うーん|んー+|まあまあ)[、。,\s]*")
 
 
@@ -85,7 +91,7 @@ def download(path: str, dest: str) -> None:
 def upload(rid: str, path: str) -> str:
     import requests
     size = os.path.getsize(path)
-    r = call("POST", "/edit/up-start?id=" + requests.utils.quote(rid, safe=""), json={"size": size})
+    r = call("POST", "/edit/up-start?id=" + requests.utils.quote(rid, safe=""), json={"size": size, "ver": VER})
     j = r.json()
     if not j.get("ok"):
         raise RuntimeError("入れ始められない：" + str(j.get("error")))
@@ -103,10 +109,31 @@ def upload(rid: str, path: str) -> str:
                 time.sleep(10 * (attempt + 1))
             else:
                 raise RuntimeError(f"片 {n} を入れられない")
-    r = call("POST", f"/edit/up-done?u={uid}", timeout=300)
+    r = call("POST", f"/edit/up-done?u={uid}&id=" + requests.utils.quote(rid, safe=""), timeout=300)
     if not r.json().get("ok"):
         raise RuntimeError("まとめられない：" + str(r.json().get("error")))
     return uid
+
+
+def plan_telops(cues: list) -> tuple:
+    """文字起こしを PLAN_CHUNK 行ずつ AI に渡し、要約テロップ（元の秒・型・言葉）を受け取る"""
+    out, failed = [], 0
+    for k in range(0, len(cues), PLAN_CHUNK):
+        part = cues[k:k + PLAN_CHUNK]
+        lines = [[k + j, round(a, 1), t] for j, (a, b, t) in enumerate(part)]
+        try:
+            r = call("POST", "/edit/plan", json={"lines": lines}, timeout=300)
+            j = r.json()
+        except Exception:
+            j = {"ok": False}
+        if not j.get("ok"):
+            failed += 1
+            continue
+        for t in j.get("telops") or []:
+            f, to = int(t["from"]), int(t["to"])
+            if 0 <= f <= to < len(cues):
+                out.append({"a": cues[f][0], "b": cues[to][1], "type": t.get("type", "A"), "text": str(t.get("text", ""))})
+    return out, failed
 
 
 # ------------------------------------------------------------------
@@ -251,7 +278,8 @@ def esc(t: str) -> str:
 
 
 def build_ass(w: int, h: int, cues: list, chapters: list, tl: Timeline) -> tuple:
-    fs = round(h * 0.058)
+    fa, fb, fc = round(h * 0.068), round(h * 0.09), round(h * 0.083)
+    mx, mv = round(w * 0.05), round(h * 0.06)
     bfs = round(h * 0.042)
     head = f"""[Script Info]
 ScriptType: v4.00+
@@ -262,7 +290,11 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Telop,{FONT},{fs},&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{max(3, round(fs * 0.12))},{max(1, round(fs * 0.04))},2,{round(w * 0.05)},{round(w * 0.05)},{round(h * 0.05)},1
+Style: AOut,{FONT} Black,{fa},{WHITE},{WHITE},{NAVY},{BLACK},-1,0,0,0,100,100,1,0,1,{round(fa * 0.21)},0,2,{mx},{mx},{mv},1
+Style: A,{FONT} Black,{fa},{WHITE},{WHITE},{BLACK},{BLACK},-1,0,0,0,100,100,1,0,1,{round(fa * 0.08)},0,2,{mx},{mx},{mv},1
+Style: BOut,{FONT} Black,{fb},{YELLOW},{YELLOW},{WHITE},{BLACK},-1,0,0,0,100,100,2,0,1,{round(fb * 0.18)},0,2,{mx},{mx},{mv},1
+Style: B,{FONT} Black,{fb},{YELLOW},{YELLOW},{NAVY},{BLACK},-1,0,0,0,100,100,2,0,1,{round(fb * 0.09)},0,2,{mx},{mx},{mv},1
+Style: C,{FONT} Black,{fc},{NAVY},{NAVY},{ORANGE},{BLACK},-1,0,0,0,100,100,2,0,3,{round(fc * 0.37)},0,5,{mx},{mx},0,1
 Style: Band,{FONT},{bfs},{NAVY},{NAVY},&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1
 Style: Box,{FONT},10,{WHITE_BOX},{WHITE_BOX},&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1
 
@@ -270,17 +302,30 @@ Style: Box,{FONT},10,{WHITE_BOX},{WHITE_BOX},&H00000000,&H00000000,0,0,0,0,100,1
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     ev, n_telop = [], 0
-    for a, b, t in cues:
-        parts = split_text(t)
-        total = sum(len(p) for p in parts) or 1
-        x = a
-        for p in parts:
-            y = x + (b - a) * len(p) / total
-            s, e = tl.map(x), tl.map(y)
-            if e - s >= 0.35:
-                ev.append(f"Dialogue: 1,{ass_time(s)},{ass_time(e)},Telop,,0,0,0,,{wrap(esc(p))}")
-                n_telop += 1
-            x = y
+    pop = r"{\fscx70\fscy70\t(0,120,\fscx112\fscy112)\t(120,220,\fscx100\fscy100)}"
+    tels = sorted(cues, key=lambda x: x["a"])
+    for i, t in enumerate(tels):
+        a, b = t["a"], min(t["b"], t["a"] + 8.0)
+        nxt = tels[i + 1]["a"] if i + 1 < len(tels) else b + 2
+        if b - a < 1.4:
+            b = min(a + 1.4, nxt)
+        s_, e_ = tl.map(a), tl.map(b)
+        if e_ - s_ < 0.6:
+            continue
+        ts, te = ass_time(s_), ass_time(e_)
+        if t["type"] == "C":
+            te = ass_time(min(e_, s_ + 3.5))
+            ev.append(f"Dialogue: 6,{ts},{te},C,,0,0,0,,{{\\fad(150,200)}}{pop}{esc(t['text'])[:16]}")
+        elif t["type"] == "B":
+            txt = esc(t["text"].replace("／", ""))[:16]
+            ev.append(f"Dialogue: 5,{ts},{te},BOut,,0,0,0,,{pop}{txt}")
+            ev.append(f"Dialogue: 6,{ts},{te},B,,0,0,0,,{pop}{txt}")
+        else:
+            txt = r"\N".join(wrap(esc(x.strip())) for x in t["text"].split("／") if x.strip())
+            fade = r"{\fad(80,80)}"
+            ev.append(f"Dialogue: 5,{ts},{te},AOut,,0,0,0,,{fade}{txt}")
+            ev.append(f"Dialogue: 6,{ts},{te},A,,0,0,0,,{fade}{txt}")
+        n_telop += 1
 
     # 上の帯：目次の見出しを、次の見出しまで
     chs = sorted([c for c in chapters if c.get("name")], key=lambda c: c["t"])
@@ -321,12 +366,15 @@ def render(src: str, ass: str, segs: list, out: str, work: str) -> None:
     )
 
 
-def edit(src: str, vtt: str, chapters: list, out: str, work: str) -> dict:
+def edit(src: str, vtt: str, chapters: list, out: str, work: str, telops: list = None) -> dict:
     info = probe(src)
     segs = speech_segments(src, info["dur"])
     tl = Timeline(segs)
     cues = parse_vtt(vtt) if vtt else []
-    ass_text, n_telop, n_band = build_ass(info["w"], info["h"], cues, chapters, tl)
+    failed = 0
+    if telops is None:
+        telops, failed = plan_telops(cues) if cues else ([], 0)
+    ass_text, n_telop, n_band = build_ass(info["w"], info["h"], telops, chapters, tl)
     ass = os.path.join(work, "edit.ass")
     with open(ass, "w", encoding="utf-8") as f:
         f.write(ass_text)
@@ -335,7 +383,10 @@ def edit(src: str, vtt: str, chapters: list, out: str, work: str) -> dict:
         "before_min": round(info["dur"] / 60, 1),
         "after_min": round(tl.total / 60, 1),
         "cuts": max(0, len(segs) - 1),
+        "lines": len(cues),
         "telops": n_telop,
+        "types": {k: sum(1 for t in telops if t["type"] == k) for k in "ABC"},
+        "plan_failed": failed,
         "bands": n_band,
         "mb": round(os.path.getsize(out) / 1048576),
     }
@@ -345,9 +396,10 @@ def main() -> None:
     if len(sys.argv) >= 2 and sys.argv[1] == "--local":
         src, vtt_path, out = sys.argv[2], sys.argv[3], sys.argv[4]
         chapters = json.loads(sys.argv[5]) if len(sys.argv) > 5 else []
+        telops = json.load(open(sys.argv[6], encoding="utf-8")) if len(sys.argv) > 6 else None
         with tempfile.TemporaryDirectory() as work:
             vtt = open(vtt_path, encoding="utf-8").read() if vtt_path != "-" else ""
-            print(json.dumps(edit(src, vtt, chapters, out, work), ensure_ascii=False))
+            print(json.dumps(edit(src, vtt, chapters, out, work, telops), ensure_ascii=False))
         return
 
     rid = (os.environ.get("REC_ID_INPUT") or "").strip()
