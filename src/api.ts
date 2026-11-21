@@ -12,6 +12,7 @@
  *   meta_set     名前と会の種類（まとめて）
  *   suggest_kai  「その他」の録画に会の種類の案を AI で付ける（少しずつ。5 分ごとの処理も 6 本ずつ出す）
  *   labels_edit  ラベルの名前を変える・削除（便 A）
+ *   第56版（2026-11-21 コンテンツくんの画像）readDriveImage  ドライブの画像 1 枚をファイルの番号から読む（src/results-drive.ts）
  *   第36版（2026-11-14 スライド制作 便4b）createSlidesDeck  スライドの台帳の配置表から Google スライドを作る（src/slides-gslides.ts）
  *   第32版（便 C 手で上げる・2026-11-06 Naoki OK 19:47）
  *   upload_start・upload_part・upload_complete・upload_abort  動画・音声を 16MB ずつ R2 へ入れ、棚に「アップロード」で並べる（src/upload.ts）
@@ -29,7 +30,7 @@ import { cleanSummary, transcribeSummary } from "./transcribe";
 import { labelsEdit, memberData, memberInfo, memberPage, memberStream, memberVideo, metaSet, refreshShelfItems, routeConfig, routeConfigSet, routeDone, routeSet, shareIssue, shareSet, shelfList, suggestKai, suggestThumbs, thumbSet, thumbsOf, weeklyCheck } from "./shelf";
 import { saveContentImages, type ContentDriveEnv, type SaveContentImagesInput } from "./content-drive";
 import { uploadAbort, uploadComplete, uploadPart, uploadStart } from "./upload";
-import { inboxDone, inboxStatus, inboxTake } from "./results-drive";
+import { inboxDone, inboxStatus, inboxTake, readDriveImage } from "./results-drive";
 import { createSlidesDeck, type CreateSlidesDeckInput } from "./slides-gslides";
 
 export interface SearchQuery {
@@ -228,6 +229,10 @@ export class ArchiveApi extends WorkerEntrypoint<ArchiveEnv> {
   }
   async results_inbox_take(limit?: number): Promise<object> {
     return inboxTake(this.env as never, Number(limit) || 5);
+  }
+  /** 第56版：ドライブの画像 1 枚をファイルの番号から読む（shia2n-mcp の content_os__put_images の drive_file_id から呼ぶ） */
+  async readDriveImage(fileId: string): Promise<object> {
+    return readDriveImage(this.env as never, fileId);
   }
   async results_inbox_done(ids: string[]): Promise<object> {
     return inboxDone(this.env as never, Array.isArray(ids) ? ids.map(String) : []);
