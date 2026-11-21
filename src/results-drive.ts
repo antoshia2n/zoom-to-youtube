@@ -140,3 +140,35 @@ export async function inboxDone(env: ResultsDriveEnv, ids: string[]): Promise<ob
   }
   return { ok: true, done: n };
 }
+
+/**
+ * 第56版（2026-11-21 開発部）：ドライブの画像 1 枚を、ファイルの番号から読む（shia2n-mcp の content_os__put_images の drive_file_id から呼ぶ）。
+ * 共通のサービスアカウントは Naoki のマイドライブ（実績ライブラリなど）を見られないため、ふだんの Google の許可（drive.readonly）で読む。
+ * 読むだけ。ファイルは動かさず・消さない。画像（png・jpeg・webp・gif）で 8MB まで。
+ */
+const IMG_MIMES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+const IMG_MAX = 8 * 1024 * 1024;
+export async function readDriveImage(env: ResultsDriveEnv, fileId: string): Promise<object> {
+  const id = String(fileId ?? "").trim();
+  if (!/^[0-9A-Za-z_-]{10,100}$/.test(id)) return { ok: false, error: "bad_id", message: "ドライブのファイルの番号の形ではありません" };
+  let tk: string, scope: string;
+  try { ({ tk, scope } = await token(env)); } catch (e) { return { ok: false, error: "need_permit", message: String((e as Error).message) }; }
+  if (!scope.split(" ").includes(READ_SCOPE)) return { ok: false, error: "need_permit", message: "drive.readonly の許可が無い（/oauth/start?for=workspace を通し直す）" };
+  try {
+    const m = await g<{ id?: string; name?: string; mimeType?: string; size?: string; trashed?: boolean }>(
+      tk,
+      `https://www.googleapis.com/drive/v3/files/${id}?fields=${encodeURIComponent("id,name,mimeType,size,trashed")}&supportsAllDrives=true`,
+    );
+    if (m.trashed) return { ok: false, error: "trashed", message: "ゴミ箱に入っているファイルです", name: m.name };
+    if (!IMG_MIMES.includes(String(m.mimeType))) return { ok: false, error: "not_image", message: `画像（png・jpeg・webp・gif）ではありません（${m.mimeType}）`, name: m.name };
+    if (Number(m.size || 0) > IMG_MAX) return { ok: false, error: "too_big", message: "8MB を超えています", name: m.name };
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true`, { headers: { authorization: `Bearer ${tk}` } });
+    if (!res.ok) return { ok: false, error: "read_failed", message: `読めません（${res.status}）`, name: m.name };
+    const data = await res.arrayBuffer();
+    if (data.byteLength > IMG_MAX) return { ok: false, error: "too_big", message: "8MB を超えています", name: m.name };
+    return { ok: true, file_id: id, name: m.name, mime: m.mimeType, size: data.byteLength, data };
+  } catch (e) {
+    const msg = String((e as Error).message || e);
+    return { ok: false, error: /Google 404/.test(msg) ? "not_found" : "drive_failed", message: msg.slice(0, 300) };
+  }
+}
